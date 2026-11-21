@@ -9,6 +9,7 @@ import { createAudio } from './audio.js';
 import { createDistrict } from './district.js';
 import { drive, resetVehicle, settleVehicle } from './handling.js';
 import { createSkidMarks } from './skidMarks.js';
+import { createDestruction } from './destruction.js';
 import { CITY_BOUNDS, REGION_PLACES, districtName,onCanalBridge } from './map.js';
 import { createAtlas,roadRoute } from './navigation.js';
 import { createArsenal, clearRange } from './pulse.js';
@@ -45,6 +46,7 @@ async function start() {
   sun.shadow.bias=-.00025;sun.shadow.normalBias=.032;
   scene.add(sun,sun.target,new T.HemisphereLight(0xffddcc,0x8a829b,0.5));
   const world=createWorld(scene);
+  const destruction=createDestruction(scene,world.blocks,world.groundHeight);
   const skidMarks=createSkidMarks(scene,world.groundHeight);
   const gulls=addGulls(scene);
   const hero=createCar({hero:true,color:0xa82e24});
@@ -73,6 +75,7 @@ async function start() {
   let waypoint=null,nextRoute=0,route=[],remaining=0;
   const slotNames={FISTS:'Кулаки',PULSE:'Прибой',NOVA:'Нова'};
   let phase,paused,muted=false,elapsed,time=0,toast='',toastTime=0,look=0,pitch=0,cameraYaw=0,inspection=0;
+  let lastBreakSound=-Infinity;
   let pointer=null,previousX=0,previousY=0,returnDelay=0,walking=false,loaded=false;
   const state={},carPos=()=>Math.hypot(vehicle.x-foot.x,vehicle.z-foot.z);
   const goalDist=()=>Math.hypot(vehicle.x-goal.x,vehicle.z-goal.z);
@@ -93,6 +96,7 @@ async function start() {
     renderActors(1,0);updateCamera(1,true);
   }
   function reset() {
+    destruction.reset();lastBreakSound=-Infinity;
     skidMarks.reset();
     resetVehicle(vehicle);
     bodywork.restore();
@@ -134,7 +138,18 @@ async function start() {
     if(phase==='foot')foot.yaw=yaw;
     const actor=phase==='foot'?foot:vehicle;
     const result=arsenal.attack({x:actor.x,z:actor.z,y:pos.y,yaw,driving:phase==='drive',power:overcharge});
-    if(result){if(result.mode==='FISTS')audio.bump();else audio.pulse();}
+    if(result){
+      if(result.mode==='FISTS')audio.bump();else audio.pulse();
+      if(destruction.strike(actor.x,actor.z,yaw,result.mode,overcharge))soundBreak();
+    }
+  }
+  function soundBreak(){
+    if(time-lastBreakSound<.12)return;
+    lastBreakSound=time;audio.breakage();
+  }
+  function breakProp(block,speed,vx,vz,x,z){
+    if(!destruction.hit(block,speed,vx,vz,x,z))return false;
+    soundBreak();return true;
   }
   function jump(){
     if(phase==='foot' && foot.grounded && !paused && !consoleOpen&&!mapOpen){
@@ -295,7 +310,7 @@ async function start() {
       }
     } else if(phase==='drive') {
       elapsed+=dt;
-      drive(vehicle,{gas,brake,turn,handbrake:down('Space'),nitro,grade:roadGrade(vehicle.x,vehicle.z,vehicle.yaw)},dt,hit,(damage,contact)=>{
+      drive(vehicle,{gas,brake,turn,handbrake:down('Space'),nitro,breakProp,grade:roadGrade(vehicle.x,vehicle.z,vehicle.yaw)},dt,hit,(damage,contact)=>{
         bodywork.dent(damage,contact);
         audio.impact();say(damage?'Удар по кузову  ·  минус $'+damage*8:'Удар по кузову');
       });
@@ -307,7 +322,7 @@ async function start() {
     hero.update(dt,vehicle.speed,vehicle.steer/.55,down('KeyS','ArrowDown','Space'),vehicle.frontWheelSpeed,vehicle.rearWheelSpeed);
     pos.set(phase==='foot'?foot.x:vehicle.x,phase==='foot'?foot.y:0,phase==='foot'?foot.z:vehicle.z);
     district.update(dt,pos,phase==='drive',vehicle);world.update(dt,time);gulls(time);
-    arsenal.update(dt);
+    arsenal.update(dt);destruction.update(dt);
   }
   function renderActors(alpha,dt) {
     const mix=(a,b)=>a+(b-a)*alpha;

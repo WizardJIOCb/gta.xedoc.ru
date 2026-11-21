@@ -20,7 +20,7 @@ function noiseBuffer(ctx) {
 // Short sounds are rendered once. Rapid impacts reuse buffers instead of
 // allocating a new bank of envelopes and oscillators for every contact.
 function makeEffect(ctx, kind) {
-  const duration = { foot: .145, sand: .17, bump: .22, impact: .48, pulse: .56, gear: .105 }[kind];
+  const duration = { foot: .145, sand: .17, bump: .22, impact: .48, breakage:.39, pulse: .56, gear: .105 }[kind];
   const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate);
   const out = buffer.getChannelData(0);
   let filtered = 0, phase = 0;
@@ -41,6 +41,11 @@ function makeEffect(ctx, kind) {
         value = .74 * Math.sin(TAU * (45 * t + 1.7 * (1 - Math.exp(-t * 32)))) * Math.exp(-t * 21)
           + .39 * filtered * Math.exp(-t * 29);
         break;
+      case 'breakage':{
+        const rattle=Math.max(0,Math.cos(t*104))**6;
+        value=.68*noise*Math.exp(-t*39)+rattle*(.64*filtered+.23*Math.sin(TAU*479*t))*Math.exp(-t*8);
+        break;
+      }
       case 'impact':
         value = .68 * filtered * Math.exp(-t * 13) + .41 * Math.sin(TAU * 64 * t) * Math.exp(-t * 12)
           + .17 * Math.sin(TAU * 315 * t + 1.35 * Math.sin(TAU * 491 * t)) * Math.exp(-t * 14)
@@ -238,5 +243,6 @@ export function createAudio() {
   }
   return { wake, update, mute, footstep, nextStation, station: () => STATIONS[stationIndex].name,
     pulse: () => playEffect('pulse', .82), bump: () => playEffect('bump', .69),
+    breakage: () => playEffect('breakage',.82,0,.87+Math.random()*.23),
     impact: () => playEffect('impact', .91, -.08, .91 + Math.random() * .15) };
 }

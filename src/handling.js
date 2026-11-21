@@ -48,7 +48,7 @@ function deepestContact(x,z,yaw,hitTest,out) {
   const query={};
   for(const offset of HULL_PROBES){
     const px=x-sx*offset,pz=z-cz*offset;
-    query.nx=0;query.nz=0;query.depth=0;query.vx=0;query.vz=0;query.target=null;
+    query.nx=0;query.nz=0;query.depth=0;query.vx=0;query.vz=0;query.target=null;query.block=null;
     if(!hitTest(px,pz,HULL_RADIUS,query))continue;
     if(!query.nx&&!query.nz&&!boundaryContact(px,pz,HULL_RADIUS,hitTest,query)){
       out.depth=Infinity;return true;
@@ -62,7 +62,7 @@ function deepestContact(x,z,yaw,hitTest,out) {
   return deepest>=0;
 }
 
-function moveChassis(v,dt,hitTest,onImpact) {
+function moveChassis(v,dt,hitTest,onImpact,breakProp) {
   let x=v.x+v.vx*dt,z=v.z+v.vz*dt;
   const yaw=v.yaw+v.yawRate*dt,hit={};
   for(let pass=0;pass<5;pass++){
@@ -79,6 +79,13 @@ function moveChassis(v,dt,hitTest,onImpact) {
     const dz=v.vz-v.yawRate*rx-hit.vz-(other?other.vz-other.yawRate*bx:0);
     const closing=-(dx*nx+dz*nz);
     if(closing>0){
+      if(hit.block?.breakable && breakProp?.(hit.block,closing,v.vx,v.vz,x+rx,z+rz)){
+        // The fixture gives way. Take a small normal impulse and solve the
+        // same pose again in case a separate solid object is behind it.
+        const resistance=Math.min(2.1,closing*.13);
+        v.vx+=nx*resistance;v.vz+=nz*resistance;
+        continue;
+      }
       const arm=rz*nx-rx*nz;
       const rebound=closing>3?.13:0;
       const otherArm=bz*nx-bx*nz;
@@ -148,7 +155,7 @@ function integrate(v,input,dt,sand,hitTest,onImpact) {
     v.vx=0;v.vz=0;v.yawRate=0;
   }
   v.impactDelay=Math.max(0,v.impactDelay-dt);
-  moveChassis(v,dt,hitTest,onImpact);
+  moveChassis(v,dt,hitTest,onImpact,input.breakProp);
 
   // Sprung-body motion follows actual acceleration, including impact pulses.
   const ax=(v.vx-oldVx)/dt,az=(v.vz-oldVz)/dt;

@@ -4,7 +4,7 @@ import { TrafficResponse,trafficFootprintClear } from './trafficResponse.js';
 import { createContactQuery } from './collision.js';
 import { createRagdoll } from './ragdoll.js';
 import { setCarVolume } from './vehicleContact.js';
-import { REGION_ROADS, isTraversable } from './map.js';
+import { REGION_ROADS, CITY_BOUNDS, onCanalBridge } from './map.js';
 
 // Offset loops keep traffic in its own lane through each rounded corner.
 function loop(points) {
@@ -24,6 +24,28 @@ function loop(points) {
     shape.add(new T.LineCurve3(c.exit,corners[(i+1)%corners.length].enter));
   });
   return shape;
+}
+
+// Distance-indexed corner speeds. Propagate braking distances backwards so
+// drivers start slowing on the straight, including across the loop seam.
+function cornerSpeeds(path) {
+  const length=path.getLength(),count=Math.ceil(length/2),spacing=length/count;
+  const points=Array.from({length:count},(_,i)=>path.getPoint(i/count));
+  const speeds=new Float32Array(count);
+  for(let i=0;i<count;i++){
+    const a=points[(i+count-1)%count],b=points[i],c=points[(i+1)%count];
+    const ax=b.x-a.x,az=b.z-a.z,bx=c.x-b.x,bz=c.z-b.z;
+    const bend=Math.abs(Math.atan2(ax*bz-az*bx,ax*bx+az*bz));
+    speeds[i]=Math.min(16,Math.sqrt(3.4*spacing/Math.max(.001,bend)));
+  }
+  for(let j=2*count-1;j>=0;j--){
+    const i=j%count,next=speeds[(i+1)%count];
+    speeds[i]=Math.min(speeds[i],Math.sqrt(next*next+2*3.5*spacing));
+  }
+  return distance=>{
+    const t=distance/spacing,i=Math.floor(t);
+    return T.MathUtils.lerp(speeds[i%count],speeds[(i+1)%count],t-i);
+  };
 }
 
 function groundHeight(x,z) {
@@ -51,13 +73,14 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
     loop([[-258,-158],[-319,-158],[-319,94],[-258,94]])
   ];
   const routeOrder=[0,1,2,0,1,2,3,4,3,4,5,5,5,6];
+  const limits=routes.map(cornerSpeeds);
   const cars = [0x3c6168,0xd4bd8d,0x475565,0x9b655c,0xd3d5ca,0x857c73,0x9c563f,0x244a4d,0x635a78,0x999184,0x317c80,0xc1a48e,0x854732,0xd6c08f].map((color,i) => {
     const model = createCar({color});
     const path = routes[routeOrder[i]], length = path.getLength();
     scene.add(model.mesh);
     const initialOffset=[.66,.94,.5,.30,.68,.92,.21,.23,.71,.77,.15,.49,.80,.24][i]*length;
     const pace=6.4+i*.39;
-    return {model,path,length,initialOffset,offset:initialOffset,pace,speed:pace,steer:0,response:new TrafficResponse()};
+    return {model,path,length,cornerSpeed:limits[routeOrder[i]],initialOffset,offset:initialOffset,pace,speed:pace,steer:0,response:new TrafficResponse()};
   });
   const pedestrians = [
     [-9.6,78,-1],[11.7,70,1],[-10.3,46,1],[11.2,1,-1],
@@ -75,6 +98,9 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
   const agents=[...cars,...pedestrians];
   for(const a of agents){
     const mesh=a.model.mesh;
+    // Quaternions are interpolated for rendering. In YXZ, reading yaw back
+    // also stays valid for headings facing south (beyond +/- 90 degrees).
+    mesh.rotation.order='YXZ';
     a.prevPosition=mesh.position.clone();a.position=mesh.position.clone();
     a.prevRotation=mesh.quaternion.clone();a.rotation=mesh.quaternion.clone();
   }
@@ -92,32 +118,37 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
       playerVehicle.z,playerVehicle.yaw,0,0,true);
     for(const a of agents){a.prevPosition.copy(a.position);a.prevRotation.copy(a.rotation);}
     for (const car of cars) {
-      const p = car.model.mesh.position, h = car.model.mesh.rotation.y;
+      const p = car.model.mesh.position, h = car.response.lastYaw;
       const dx=player.x-p.x, dz=player.z-p.z;
       const forward=-dx*Math.sin(h)-dz*Math.cos(h);
-      const yieldToPlayer = forward > -0.3 && forward < (driving?8:6) &&
-        Math.abs(dx*Math.cos(h)-dz*Math.sin(h)) < 2.1;
-      car.speed=T.MathUtils.damp(car.speed,yieldToPlayer?0:car.pace,yieldToPlayer?4.5:1.6,dt);
+      const gap=forward-(driving?4.9:3.0);
+      const yieldToPlayer=forward>-.3&&forward<24&&Math.abs(dx*Math.cos(h)-dz*Math.sin(h))<2.1;
+      const target=Math.min(car.pace,car.cornerSpeed(car.offset),yieldToPlayer?Math.sqrt(7*Math.max(0,gap)):Infinity);
+      car.speed+=T.MathUtils.clamp(target-car.speed,-4.2*dt,2.25*dt);
       if(car.response.blocked)car.speed=0;
-      if(yieldToPlayer && (car.speed<.05 || forward<3))car.speed=0;
+      if(dt>0&&yieldToPlayer)car.speed=Math.min(car.speed,Math.max(0,gap)/dt);
       const speed=car.speed;
       car.offset = (car.offset + speed*dt)%car.length;
       const t=car.offset/car.length;
       car.path.getPoint(t,p);
-      p.y=terrainHeight(p.x,p.z);
-      const ahead=car.path.getPoint(((car.offset+0.4)%car.length)/car.length);
-      const heading=Math.atan2(p.x-ahead.x,p.z-ahead.z);
+      const ahead=car.path.getPoint(((car.offset+1.3)%car.length)/car.length);
+      const back=car.path.getPoint(((car.offset-1.3+car.length)%car.length)/car.length);
+      const heading=Math.atan2(back.x-ahead.x,back.z-ahead.z);
       if(speed>0){
-        const future=car.path.getPoint(((car.offset+1.4)%car.length)/car.length);
-        const next=Math.atan2(ahead.x-future.x,ahead.z-future.z);
-        const bend=Math.atan2(Math.sin(next-heading),Math.cos(next-heading));
-        car.steer=T.MathUtils.clamp(Math.atan(2.6*bend/.7)/.44,-1,1);
+        const frontYaw=Math.atan2(p.x-ahead.x,p.z-ahead.z),rearYaw=Math.atan2(back.x-p.x,back.z-p.z);
+        const bend=Math.atan2(Math.sin(frontYaw-rearYaw),Math.cos(frontYaw-rearYaw));
+        car.steer=T.MathUtils.clamp(Math.atan(2.6*bend/1.3)/.44,-1,1);
       }
       const yaw=car.response.pose(dt,p,heading,speed,(x,z,h)=>
         trafficFootprintClear(x,z,h,car,hit,player,driving,playerVehicle?.yaw||0,pedestrians));
-      car.model.mesh.rotation.y=yaw;p.y=terrainHeight(p.x,p.z);
+      let grade=0;
+      if(p.z>CITY_BOUNDS.maxZ||onCanalBridge(p.x,p.z,1.4)){
+        const sx=Math.sin(yaw)*1.3,sz=Math.cos(yaw)*1.3;
+        grade=Math.atan2(terrainHeight(p.x-sx,p.z-sz)-terrainHeight(p.x+sx,p.z+sz),2.6);
+      }
+      car.model.mesh.rotation.set(grade,yaw,0,'YXZ');p.y=terrainHeight(p.x,p.z);
       setCarVolume(car.volume,p.x,p.y,p.z,yaw,car.response.worldVX,car.response.worldVZ);
-      car.model.update(dt,car.response.wheelSpeed,car.steer,yieldToPlayer||car.response.blocked);
+      car.model.update(dt,car.response.wheelSpeed,car.steer,car.speed>target+.1||(yieldToPlayer&&gap<1)||car.response.blocked);
     }
     for (const ped of pedestrians) {
       const obj=ped.model.mesh;
@@ -159,7 +190,7 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
       ped.speed=T.MathUtils.damp(ped.speed,target,4.2,dt);
       const nx=T.MathUtils.damp(obj.position.x,ped.anchorX,.75,dt)-Math.sin(obj.rotation.y)*ped.speed*dt;
       const nz=obj.position.z-Math.cos(obj.rotation.y)*ped.speed*dt;
-      if(!isTraversable(nx,nz,.23)||blocks.some(b=>Math.abs(nx-b.x)<b.w/2+.23 && Math.abs(nz-b.z)<b.d/2+.23)){
+      if(hit(nx,nz,.23)){
         if(alignment>.8)ped.dir*=-1;
         ped.gaitSpeed=0;
       }else{
@@ -265,7 +296,7 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
   function reset(){
     heroVolume.x=heroVolume.z=Infinity;
     beginStep();simTime=lastStep=animationTime=0;
-    for(const car of cars){car.offset=car.initialOffset;car.steer=0;car.speed=car.pace;car.response.reset();}
+    for(const car of cars){car.offset=car.initialOffset;car.steer=0;car.speed=Math.min(car.pace,car.cornerSpeed(car.offset));car.response.reset();}
     for(const ped of pedestrians){
       ped.rag?.restore();ped.recovery?.restore();ped.rag=ped.recovery=null;
       ped.dir=ped.spawn.dir;ped.origin=ped.spawn.z;ped.anchorX=ped.spawn.x;

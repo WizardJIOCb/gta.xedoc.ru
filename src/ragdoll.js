@@ -43,6 +43,7 @@ function fallback(model, velocity, floor, obstacles) {
         base.add(correction);motion.x+=(car.vx-motion.x)*.22;motion.z+=(car.vz-motion.z)*.22;onCar=true;
       }
       for(const wall of obstacles){
+        if(wall.breakable?.broken)continue;
         const dx=base.x-wall.x,dz=base.z-wall.z;
         const ox=wall.w/2+.16-Math.abs(dx),oz=wall.d/2+.16-Math.abs(dz);
         if(ox<=0||oz<=0)continue;
@@ -222,6 +223,7 @@ export function createRagdoll(model, velocity, floor, obstacles=[], contact=null
           if(p.pos.y<y){project(p,correction.set(0,y-p.pos.y,0),null,dt);p.ground=true;}
           for(const car of cars)if(carContact(car,p.pos,p.radius,correction))project(p,correction,car,dt);
           for(const wall of nearbyWalls){
+            if(wall.breakable?.broken)continue;
             const dx=p.pos.x-wall.x,dz=p.pos.z-wall.z;
             const overlapX=wall.w/2+p.radius-Math.abs(dx),overlapZ=wall.d/2+p.radius-Math.abs(dz);
             if(overlapX<=0 || overlapZ<=0)continue;

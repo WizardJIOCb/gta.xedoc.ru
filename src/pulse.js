@@ -5,6 +5,7 @@ const specs={
   PULSE:{range:17,cooldown:.65,cone:.92,strength:1,lift:3.4},
   NOVA:{range:8.5,cooldown:1.3,cone:-1,strength:1.22,lift:4.3}
 };
+export { specs as weaponSpecs };
 const UP=new T.Vector3(0,1,0);
 
 function devices(scene){
@@ -213,6 +214,7 @@ export function createArsenal(scene,person,car,district,world){
 export function clearRange(x,z,dx,dz,limit,blocks) {
   let range=limit;
   for(const b of blocks){
+    if(b.breakable?.broken)continue;
     let near=0,far=range;
     for(const [offset,dir,radius] of [[b.x-x,dx,b.w/2],[b.z-z,dz,b.d/2]]){
       if(Math.abs(dir)<1e-7){if(Math.abs(offset)>radius){far=-1;break;}continue;}
