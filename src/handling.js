@@ -1,4 +1,5 @@
 import {CITY_BOUNDS,isRegionalRoad} from './map.js';
+import {TRAFFIC_INV_MASS,TRAFFIC_INV_INERTIA} from './trafficResponse.js';
 
 const clamp=(n,lo,hi)=>Math.max(lo,Math.min(hi,n));
 const FRONT_AXLE=1.25, REAR_AXLE=1.44, WHEELBASE=FRONT_AXLE+REAR_AXLE;
@@ -47,7 +48,7 @@ function deepestContact(x,z,yaw,hitTest,out) {
   const query={};
   for(const offset of HULL_PROBES){
     const px=x-sx*offset,pz=z-cz*offset;
-    query.nx=0;query.nz=0;query.depth=0;query.vx=0;query.vz=0;
+    query.nx=0;query.nz=0;query.depth=0;query.vx=0;query.vz=0;query.target=null;
     if(!hitTest(px,pz,HULL_RADIUS,query))continue;
     if(!query.nx&&!query.nz&&!boundaryContact(px,pz,HULL_RADIUS,hitTest,query)){
       out.depth=Infinity;return true;
@@ -71,16 +72,26 @@ function moveChassis(v,dt,hitTest,onImpact) {
     if(!Number.isFinite(hit.depth))break;
     // Normal impulse at the contact point also rotates a clipped fender.
     const {nx,nz,rx,rz}=hit;
-    const dx=v.vx+v.yawRate*rz-hit.vx,dz=v.vz-v.yawRate*rx-hit.vz;
+    const other=hit.target?.response;
+    const bx=other?x+rx-hit.target.model.mesh.position.x:0;
+    const bz=other?z+rz-hit.target.model.mesh.position.z:0;
+    const dx=v.vx+v.yawRate*rz-hit.vx-(other?other.vx+other.yawRate*bz:0);
+    const dz=v.vz-v.yawRate*rx-hit.vz-(other?other.vz-other.yawRate*bx:0);
     const closing=-(dx*nx+dz*nz);
     if(closing>0){
       const arm=rz*nx-rx*nz;
       const rebound=closing>3?.13:0;
-      const impulse=(1+rebound)*closing/(1+arm*arm/YAW_INERTIA);
+      const otherArm=bz*nx-bx*nz;
+      const otherMass=other?TRAFFIC_INV_MASS+otherArm*otherArm*TRAFFIC_INV_INERTIA:0;
+      const impulse=(1+rebound)*closing/(1+arm*arm/YAW_INERTIA+otherMass);
       const tx=-nz,tz=nx,tarm=rz*tx-rx*tz;
-      const tangent=clamp(-(dx*tx+dz*tz)/(1+tarm*tarm/YAW_INERTIA),-.18*impulse,.18*impulse);
-      v.vx+=nx*impulse+tx*tangent;v.vz+=nz*impulse+tz*tangent;
+      const otherTarm=bz*tx-bx*tz;
+      const tangentMass=other?TRAFFIC_INV_MASS+otherTarm*otherTarm*TRAFFIC_INV_INERTIA:0;
+      const tangent=clamp(-(dx*tx+dz*tz)/(1+tarm*tarm/YAW_INERTIA+tangentMass),-.18*impulse,.18*impulse);
+      const ix=nx*impulse+tx*tangent,iz=nz*impulse+tz*tangent;
+      v.vx+=ix;v.vz+=iz;
       v.yawRate=clamp(v.yawRate+(arm*impulse+tarm*tangent)/YAW_INERTIA,-2.6,2.6);
+      if(other)other.kick(-ix,-iz,bx,bz);
       if(closing>2.5 && !v.impactDelay){
         const damage=Math.min(100-v.damage,Math.max(1,Math.round((closing-2)*1.65)));
         v.damage+=damage;v.impactDelay=.45;
