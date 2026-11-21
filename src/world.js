@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { AVENUES, CROSS_STREETS, CITY_BOUNDS as BOUNDS, regionGroundHeight, REGIONAL_LOTS } from './map.js';
+import { AVENUES, CROSS_STREETS, CITY_BOUNDS as BOUNDS, regionGroundHeight, REGIONAL_LOTS, canalDeck, onCanalBridge } from './map.js';
 import { buildRegion } from './region.js';
+import { buildCityEdge } from './cityEdge.js';
 import { addRegionalProps } from './regionalProps.js';
 
 const ORIGINAL_ROWS = [-192,-128,-64,0,64];
@@ -542,9 +543,9 @@ function makeMaterials() {
 
 function streets(b,m,rnd) {
   // A continuous asphalt sheet leaves the intersections physically flush.
-  ground(b,m.asphalt,BOUNDS.minX-20,BOUNDS.minZ-30,18,BOUNDS.maxZ,0,4.2);
+  ground(b,m.asphalt,AVENUES[0]-7.3,CROSS_STREETS[0]-7.3,18,BOUNDS.maxZ,0,4.2);
   for(const x of AVENUES){
-    for(let z=BOUNDS.minZ;z<BOUNDS.maxZ;z+=5.4){
+    for(let z=CROSS_STREETS[0];z<BOUNDS.maxZ;z+=5.4){
       if(CROSS_STREETS.some(c=>Math.abs(c-z)<9.6))continue;
       ground(b,m.stripe,x-.19,z,x-.10,z+4.9,.018,1,'#c9a768');
       ground(b,m.stripe,x+.10,z,x+.19,z+4.9,.018,1,'#d8b56d');
@@ -555,7 +556,7 @@ function streets(b,m,rnd) {
     }
   }
   for(const z of CROSS_STREETS){
-    for(let x=BOUNDS.minX;x<-7;x+=4.12) {
+    for(let x=AVENUES[0];x<-7;x+=4.12) {
       if(AVENUES.some(a=>Math.abs(a-x)<9.3))continue;
       ground(b,m.stripe,x,z-.13,x+2.5,z+.13,.018,1,'#c6a767');
     }
@@ -779,6 +780,10 @@ function havanaBlock(b,m,rnd,blocks,x,z,plaza) {
     eastFace(b,m.store,cx+w/2+.02,.22,cz,d-.8,3,Math.floor(rnd()*12),3);
     northFace(b,m.facade,cx,.21,cz+d/2+.012,w-.3,h-.19,Math.floor(rnd()*12),3,false);
     northFace(b,m.facade,cx,.21,cz-d/2-.012,w-.3,h-.19,Math.floor(rnd()*12),3,true);
+    const faceX=cx-w/2-.018;
+    b.quad(m.facade,[[faceX,.22,cz-d/2],[faceX,.22,cz+d/2],[faceX,h+.16,cz+d/2],[faceX,h+.16,cz-d/2]],
+      atlasUV(Math.abs(Math.round((cx+cz)/11))%12,4,3));
+    b.box(m.trim,faceX-.41,2.8,cz-2,.88,.17,4.4,'#588b82');
     for(let n=-2;n<=2;n++){
       b.box(m.stone,cx+8.65,1.78,cz+n*4.35,.3,3.2,.32,'#f4dbb4');
       b.box(m.stone,cx+8.65,3.28,cz+n*4.35,.52,.38,.57,'#edd0a3');
@@ -978,12 +983,15 @@ export function createWorld(scene) {
       }
     }
   }
+  const edge=new StaticWorld(scene,floor);
   for(let i=0;i<19;i++){
-    const zz=BOUNDS.minZ-36-rnd()*160,xx=-245+rnd()*260;
-    tower(b,m,rnd,xx,zz,7+rnd()*11,9+rnd()*14,17+rnd()*58,i,false,blocks);
+    const zz=-527-rnd()*160,xx=-245+rnd()*260;
+    tower(edge,m,rnd,xx,zz,7+rnd()*11,9+rnd()*14,17+rnd()*58,i,false,blocks);
   }
   for(let i=0;i<10;i++)
-    tower(b,m,rnd,BOUNDS.minX-28-rnd()*100,-450+rnd()*600,13+rnd()*10,15+rnd()*12,21+rnd()*76,i,false,blocks);
+    tower(edge,m,rnd,-387-rnd()*100,-450+rnd()*595,13+rnd()*10,15+rnd()*12,21+rnd()*76,i,false,blocks);
+  const updateCanal=buildCityEdge(edge,m,blocks,{ground,palm,shrub,streetLight,bench,eastFace,canvasTexture,randomGenerator});
+  edge.finish();
   addStreetDetails(b,m,rnd,blocks);
   sidewalkLife(b,m,rnd);
   for(const startZ of CROSS_STREETS.slice(0,-1)){
@@ -1008,8 +1016,9 @@ export function createWorld(scene) {
   const updateRegion=buildRegion(scene,regional,m,blocks,{palm,shrub,randomGenerator,canvasTexture});
   addRegionalProps(regional,m,blocks,REGIONAL_LOTS);
   regional.finish();
-  return {blocks,groundHeight:(x,z)=>Math.max(floor.height(x,z),z>=160?regionGroundHeight(x,z):0),update(dt,time){
+  return {blocks,groundHeight:(x,z)=>Math.max(floor.height(x,z),z>=160?regionGroundHeight(x,z):0,onCanalBridge(x,z)?canalDeck(x):0),update(dt,time){
     waterTime.value=Number.isFinite(time)?time:waterTime.value+dt;
+    updateCanal(waterTime.value);
     m.leaf.userData.breeze.value=waterTime.value;
     spinWheel(waterTime.value);
     updateRegion(waterTime.value);

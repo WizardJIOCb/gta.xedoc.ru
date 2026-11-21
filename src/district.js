@@ -1,5 +1,7 @@
 import * as T from 'three';
 import { createCar, createPerson } from './vehicles.js';
+import { TrafficResponse,trafficFootprintClear } from './trafficResponse.js';
+import { createContactQuery } from './collision.js';
 import { createRagdoll } from './ragdoll.js';
 import { setCarVolume } from './vehicleContact.js';
 import { REGION_ROADS, isTraversable } from './map.js';
@@ -45,22 +47,23 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
     loop([[-3,93],[-61,93],[-61,-221],[-3,-221]]),
     loop([[-125,-35],[-67,-35],[-67,-157],[-125,-157]]),
     loop([[-195,163],[-195,-163],[-61,-163],[-61,163]]),
-    loop([[-3,-227],[-131,-227],[-131,-419],[-3,-419]]),loop(coastLane)
+    loop([[-3,-227],[-131,-227],[-131,-419],[-3,-419]]),loop(coastLane),
+    loop([[-258,-158],[-319,-158],[-319,94],[-258,94]])
   ];
-  const routeOrder=[0,1,2,0,1,2,3,4,3,4,5,5,5];
-  const cars = [0x3c6168,0xd4bd8d,0x475565,0x9b655c,0xd3d5ca,0x857c73,0x9c563f,0x244a4d,0x635a78,0x999184,0x317c80,0xc1a48e,0x854732].map((color,i) => {
+  const routeOrder=[0,1,2,0,1,2,3,4,3,4,5,5,5,6];
+  const cars = [0x3c6168,0xd4bd8d,0x475565,0x9b655c,0xd3d5ca,0x857c73,0x9c563f,0x244a4d,0x635a78,0x999184,0x317c80,0xc1a48e,0x854732,0xd6c08f].map((color,i) => {
     const model = createCar({color});
     const path = routes[routeOrder[i]], length = path.getLength();
     scene.add(model.mesh);
-    const initialOffset=[.66,.94,.5,.30,.68,.92,.21,.23,.71,.77,.15,.49,.80][i]*length;
+    const initialOffset=[.66,.94,.5,.30,.68,.92,.21,.23,.71,.77,.15,.49,.80,.24][i]*length;
     const pace=6.4+i*.39;
-    return {model,path,length,initialOffset,offset:initialOffset,pace,speed:pace,steer:0};
+    return {model,path,length,initialOffset,offset:initialOffset,pace,speed:pace,steer:0,response:new TrafficResponse()};
   });
   const pedestrians = [
     [-9.6,78,-1],[11.7,70,1],[-10.3,46,1],[11.2,1,-1],
     [-10.7,-67,-1],[12.2,-102,1],[-10,-137,1],[13,-194,1],[10.9,58,-1],
     [11.8,-318,1],[-10.6,-370,-1],[-181.2,2,-1],[-201.3,73,1],[-246.7,123,-1],[-73.4,-318,1],
-    [158,405,-1],[168,422,1],[-205,452,1],[-74,587,-1],[-97,588,1]
+    [158,405,-1],[168,422,1],[-205,452,1],[-74,587,-1],[-97,588,1],[-313,53,-1],[-271,23,1]
   ].map(([x,z,dir],i) => {
     const model = createPerson({color:[0xc88861,0x1c6577,0xd6c8a2,0xa75d63,0x7a9488][i%5]});
     model.mesh.position.set(x,0.16,z);
@@ -95,6 +98,7 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
       const yieldToPlayer = forward > -0.3 && forward < (driving?8:6) &&
         Math.abs(dx*Math.cos(h)-dz*Math.sin(h)) < 2.1;
       car.speed=T.MathUtils.damp(car.speed,yieldToPlayer?0:car.pace,yieldToPlayer?4.5:1.6,dt);
+      if(car.response.blocked)car.speed=0;
       if(yieldToPlayer && (car.speed<.05 || forward<3))car.speed=0;
       const speed=car.speed;
       car.offset = (car.offset + speed*dt)%car.length;
@@ -103,15 +107,17 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
       p.y=terrainHeight(p.x,p.z);
       const ahead=car.path.getPoint(((car.offset+0.4)%car.length)/car.length);
       const heading=Math.atan2(p.x-ahead.x,p.z-ahead.z);
-      car.model.mesh.rotation.y=heading;
-      setCarVolume(car.volume,p.x,p.y,p.z,heading,-Math.sin(heading)*speed,-Math.cos(heading)*speed);
       if(speed>0){
         const future=car.path.getPoint(((car.offset+1.4)%car.length)/car.length);
         const next=Math.atan2(ahead.x-future.x,ahead.z-future.z);
         const bend=Math.atan2(Math.sin(next-heading),Math.cos(next-heading));
         car.steer=T.MathUtils.clamp(Math.atan(2.6*bend/.7)/.44,-1,1);
       }
-      car.model.update(dt,speed,car.steer,yieldToPlayer);
+      const yaw=car.response.pose(dt,p,heading,speed,(x,z,h)=>
+        trafficFootprintClear(x,z,h,car,hit,player,driving,playerVehicle?.yaw||0,pedestrians));
+      car.model.mesh.rotation.y=yaw;p.y=terrainHeight(p.x,p.z);
+      setCarVolume(car.volume,p.x,p.y,p.z,yaw,car.response.worldVX,car.response.worldVZ);
+      car.model.update(dt,car.response.wheelSpeed,car.steer,yieldToPlayer||car.response.blocked);
     }
     for (const ped of pedestrians) {
       const obj=ped.model.mesh;
@@ -190,6 +196,7 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
     return {model};
   });
   const allCars=[...cars,...parked];
+  const hit=createContactQuery(blocks,allCars);
   const volumes=allCars.map(car=>{
     const {position:p,rotation}=car.model.mesh;
     car.volume=setCarVolume({},p.x,p.y,p.z,rotation.y,0,0);return car.volume;
@@ -258,7 +265,7 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
   function reset(){
     heroVolume.x=heroVolume.z=Infinity;
     beginStep();simTime=lastStep=animationTime=0;
-    for(const car of cars){car.offset=car.initialOffset;car.steer=0;car.speed=car.pace;}
+    for(const car of cars){car.offset=car.initialOffset;car.steer=0;car.speed=car.pace;car.response.reset();}
     for(const ped of pedestrians){
       ped.rag?.restore();ped.recovery?.restore();ped.rag=ped.recovery=null;
       ped.dir=ped.spawn.dir;ped.origin=ped.spawn.z;ped.anchorX=ped.spawn.x;
@@ -268,5 +275,5 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
     }
     update(0,new T.Vector3(1e6,0,1e6),false);
   }
-  return {cars:allCars,pedestrians,beginStep,update,render,hitVehicle,pulse,reset};
+  return {cars:allCars,pedestrians,beginStep,update,render,hit,hitVehicle,pulse,reset};
 }

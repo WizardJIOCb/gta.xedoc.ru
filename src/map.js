@@ -1,5 +1,15 @@
-export const CITY_BOUNDS = Object.freeze({minX:-266,maxX:54,minZ:-424,maxZ:170});
-export const BOUNDS = Object.freeze({minX:-348,maxX:247,minZ:-424,maxZ:676});
+export const CANAL_BANK = -278, OPPOSITE_BANK = -307, PORT_FENCE = -435;
+export const CANAL_ROAD = -321, CANAL_BRIDGES = [-160,96], TOWPATH_WALL = -343;
+export const BRIDGE_START = CANAL_ROAD+4.5, BRIDGE_END = -263.3, BRIDGE_HALF_WIDTH = 5;
+export function canalDeck(x){
+  const t=Math.max(0,Math.min(1,(x-BRIDGE_START)/(BRIDGE_END-BRIDGE_START)));
+  return .021+1.35*Math.sin(Math.PI*t)**2;
+}
+export function onCanalBridge(x,z,r=0){
+  return x>=BRIDGE_START-r&&x<=BRIDGE_END+r&&CANAL_BRIDGES.some(at=>Math.abs(z-at)<=BRIDGE_HALF_WIDTH+r);
+}
+export const CITY_BOUNDS = Object.freeze({minX:CANAL_BANK,maxX:54,minZ:PORT_FENCE-.6,maxZ:170});
+export const BOUNDS = Object.freeze({minX:-348,maxX:247,minZ:CITY_BOUNDS.minZ,maxZ:676});
 export const AVENUES = [-256,-192,-128,-64,0];
 export const CROSS_STREETS = [-416,-352,-288,-224,-160,-96,-32,32,96,160];
 export const ROAD_HALF = 5.1;
@@ -130,6 +140,10 @@ export function roadSample(x,z) {
 }
 export function isRegionalRoad(x,z) {return (roadSample(x,z)?.distance??Infinity)<=SHOULDER_HALF;}
 function onSolid(x,z) {
+  if(z>=CITY_BOUNDS.minZ&&z<=CITY_BOUNDS.maxZ){
+    if(x>=TOWPATH_WALL&&x<=OPPOSITE_BANK||onCanalBridge(x,z))return true;
+    if(x>CITY_BOUNDS.maxX&&x<=60+1.35*Math.sin(.09*z))return true;
+  }
   if(x>=CITY_BOUNDS.minX&&x<=CITY_BOUNDS.maxX&&z>=CITY_BOUNDS.minZ&&z<=CITY_BOUNDS.maxZ)return true;
   if(z<170)return false;
   const sample=roadSample(x,z);

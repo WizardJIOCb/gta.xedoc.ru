@@ -388,12 +388,12 @@ export function createCar({hero=false,color=0xd46e48}={}) {
   wheels.name='Road wheels';wheels.castShadow=true;mesh.add(wheels);
   wheels.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   const wheelFrame=new THREE.Object3D();wheelFrame.rotation.order='YXZ';
-  let roll=0,lastSteer=0,previousRoll=0,previousSteer=0;
-  function placeWheels(steer,angle=roll) {
+  let frontRoll=0,rearRoll=0,lastSteer=0,previousFront=0,previousRear=0,previousSteer=0;
+  function placeWheels(steer,front=frontRoll,rear=rearRoll) {
     let i=0;
     for(const z of axles)for(const side of [-1,1]){
       wheelFrame.position.set(side*.857,.333,z);
-      wheelFrame.rotation.x=angle;wheelFrame.rotation.y=z<0?steer*.44:0;
+      wheelFrame.rotation.x=z<0?front:rear;wheelFrame.rotation.y=z<0?steer*.44:0;
       wheelFrame.updateMatrix();wheels.setMatrixAt(i++,wheelFrame.matrix);
     }
     wheels.instanceMatrix.needsUpdate=true;
@@ -401,18 +401,19 @@ export function createCar({hero=false,color=0xd46e48}={}) {
   placeWheels(0);
   return {
     mesh, setDriverVisible(visible){if(occupant)occupant.visible=visible;},
+    setSuspension(pitch,roll){body.rotation.x=pitch;body.rotation.z=roll;},
     renderWheels(alpha){
-      if(previousRoll!==roll || previousSteer!==lastSteer)
-        placeWheels(THREE.MathUtils.lerp(previousSteer,lastSteer,alpha),THREE.MathUtils.lerp(previousRoll,roll,alpha));
+      if(previousFront!==frontRoll || previousRear!==rearRoll || previousSteer!==lastSteer)
+        placeWheels(THREE.MathUtils.lerp(previousSteer,lastSteer,alpha),
+          THREE.MathUtils.lerp(previousFront,frontRoll,alpha),THREE.MathUtils.lerp(previousRear,rearRoll,alpha));
     },
-    update(dt,speed=0,steer=0,braking=false){
-      const travel=speed*dt;
-      previousRoll=roll;previousSteer=lastSteer;
-      if(travel!==0 || steer!==lastSteer){
-        roll-=travel/.333;
+    update(dt,speed=0,steer=0,braking=false,frontSpeed=speed,rearSpeed=speed){
+      previousFront=frontRoll;previousRear=rearRoll;previousSteer=lastSteer;
+      if(frontSpeed || rearSpeed || steer!==lastSteer){
+        frontRoll-=frontSpeed*dt/.333;rearRoll-=rearSpeed*dt/.333;
         placeWheels(steer);lastSteer=steer;
       }
-      body.rotation.z=THREE.MathUtils.damp(body.rotation.z,-steer*Math.min(Math.abs(speed)/17,1)*.028,7,dt);
+      if(!hero)body.rotation.z=THREE.MathUtils.damp(body.rotation.z,-steer*Math.min(Math.abs(speed)/17,1)*.028,7,dt);
       brakeMaterial.color.setHex(braking?0xffeeee:0xa56155);
     }
   };

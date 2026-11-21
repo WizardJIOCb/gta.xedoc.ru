@@ -218,7 +218,7 @@ export function createAudio() {
     set(air.gain.gain, inCar ? .022 + .062 * load + (extra.nitro ? .20 : 0) : 0, now);
     set(road.gain.gain, inCar ? Math.min(v * .005, .12) : 0, now);
     const steer = clamp(extra.steer || 0, -1, 1);
-    const slip = inCar ? clamp((Math.abs(steer) * v * .18 - .55) + (extra.handbrake ? v * .18 : 0), 0, 1) : 0;
+    const slip = inCar ? clamp(Math.max((extra.tireSlip||0)*1.3-.20,extra.handbrake?v*.12:0),0,1) : 0;
     set(tire.gain.gain, .27 * slip, now, .045); set(tire.panner.pan, steer * .52, now);
     set(tireNote.gain.gain, .046 * slip, now, .055);
     set(tireNote.tone.frequency, 600 + 165 * slip + 27 * Math.sin(now * 22), now, .035);

@@ -7,8 +7,9 @@ import { createCar, createPerson } from './vehicles.js';
 import { createHUD } from './hud.js';
 import { createAudio } from './audio.js';
 import { createDistrict } from './district.js';
-import { drive, resetVehicle } from './handling.js';
-import { BOUNDS, CITY_BOUNDS, REGION_PLACES, districtName, isTraversable } from './map.js';
+import { drive, resetVehicle, settleVehicle } from './handling.js';
+import { createSkidMarks } from './skidMarks.js';
+import { CITY_BOUNDS, REGION_PLACES, districtName,onCanalBridge } from './map.js';
 import { createAtlas,roadRoute } from './navigation.js';
 import { createArsenal, clearRange } from './pulse.js';
 import { createConsole } from './sandbox.js';
@@ -44,12 +45,14 @@ async function start() {
   sun.shadow.bias=-.00025;sun.shadow.normalBias=.032;
   scene.add(sun,sun.target,new T.HemisphereLight(0xffddcc,0x8a829b,0.5));
   const world=createWorld(scene);
+  const skidMarks=createSkidMarks(scene,world.groundHeight);
   const gulls=addGulls(scene);
   const hero=createCar({hero:true,color:0xa82e24});
   const bodywork=createBodywork(hero.mesh);
   const person=createPerson({color:0x28796f});
   scene.add(hero.mesh,person.mesh);
   const district=createDistrict(scene,world.blocks,world.groundHeight), audio=createAudio(), keys=new Set();
+  const hit=district.hit;
   const arsenal=createArsenal(scene,person,hero,district,world);
   const cameraBlocks=world.blocks.filter(b=>b.w>2.8 && b.d>2.8).map(b=>({...b,w:b.w+.36,d:b.d+.36}));
   const lights=new T.Group();
@@ -64,7 +67,7 @@ async function start() {
   const vehicle={},foot={x:0,z:0,yaw:0}, pos=new T.Vector3();
   const cameraTarget=new T.Vector3(), cameraEnd=new T.Vector3();
   const prevVehicle={},prevFoot={};
-  const savePose=(a,b)=>{a.x=b.x;a.z=b.z;a.yaw=b.yaw;a.y=b.y||0;};
+  const savePose=(a,b)=>{a.x=b.x;a.z=b.z;a.yaw=b.yaw;a.y=b.y||0;a.bodyRoll=b.bodyRoll||0;a.bodyPitch=b.bodyPitch||0;};
   let settledArm=6,frameDebt=0,lastFootX=0,lastFootZ=0;
   let nitro=false,overcharge=false,slowmo=false,night=false,consoleOpen=false,mapOpen=false;
   let waypoint=null,nextRoute=0,route=[],remaining=0;
@@ -82,6 +85,7 @@ async function start() {
     renderer.toneMappingExposure=value?.94:.86;
   }
   function syncPose() {
+    skidMarks.lift();
     if(foot.grounded)foot.y=standingHeight(foot.x,foot.z,foot.yaw);
     savePose(prevVehicle,vehicle);savePose(prevFoot,foot);frameDebt=0;
     lastFootX=foot.x;lastFootZ=foot.z;
@@ -89,6 +93,7 @@ async function start() {
     renderActors(1,0);updateCamera(1,true);
   }
   function reset() {
+    skidMarks.reset();
     resetVehicle(vehicle);
     bodywork.restore();
     const start=REGION_PLACES.find(p=>p.id==='KEYS');
@@ -109,10 +114,10 @@ async function start() {
       case 'MIDNIGHT':case 'SUNSET':setNight(code==='MIDNIGHT');return night?'Полночь':'Закат';
       case 'RADIO':return audio.nextStation();
       case 'STATS':return districtName(pos.x,pos.z)+' · '+Math.round(pos.x)+', '+Math.round(pos.z)+' · кузов '+(100-vehicle.damage)+'% · '+slotNames[arsenal.mode];
-      case 'KEYS':case 'GLADES':case 'OUTPOST':case 'MARINA':case 'HAVANA':case 'HOME':{
+      case 'KEYS':case 'GLADES':case 'OUTPOST':case 'MARINA':case 'HAVANA':case 'CANAL':case 'HOME':{
         const place=REGION_PLACES.find(p=>p.id===code);
-        const [x,z,yaw]=place?[place.x,place.z,place.yaw]:{MARINA:[3,-332,.45],HAVANA:[-190,12,1.13],HOME:[5.4,66,0]}[code];
-        Object.assign(vehicle,{x,z,yaw,vx:0,vz:0,speed:0,steer:0});
+        const [x,z,yaw]=place?[place.x,place.z,place.yaw]:{MARINA:[3,-332,.45],HAVANA:[-190,12,1.13],CANAL:[-253,70,.15],HOME:[5.4,66,0]}[code];
+        settleVehicle(vehicle);Object.assign(vehicle,{x,z,yaw});
         Object.assign(foot,{x:x+2.1,z:z+1,y:0,yaw,vy:0,vx:0,vz:0,grounded:true});
         inspection=0;look=phase==='foot'?yaw:0;cameraYaw=yaw;toast='';toastTime=0;syncPose();
         return districtName(x,z);
@@ -175,13 +180,13 @@ async function start() {
         const x=vehicle.x+c*side+s*back,z=vehicle.z-s*side+c*back;
         if(hit(x,z,.30))continue;
         Object.assign(foot,{x,z,y:0,yaw:vehicle.yaw,vx:0,vz:0,vy:0,grounded:true});
-        vehicle.speed=vehicle.vx=vehicle.vz=0;phase='foot';look=vehicle.yaw;
+        settleVehicle(vehicle);phase='foot';look=vehicle.yaw;
         person.mesh.visible=true;hero.setDriverVisible(false);walking=false;keys.clear();syncPose();return;
       }
       say('Рядом нет места. Припаркуйся чуть дальше.');
     } else if (action==='deliver' && phase==='drive' && goalDist()<7) {
       if (Math.abs(vehicle.speed)>1.6) {say('Притормози у ворот.');return;}
-      vehicle.speed=0;vehicle.vx=vehicle.vz=0;keys.clear();inspection=.001;
+      settleVehicle(vehicle);keys.clear();inspection=.001;
       say('Механик осматривает кузов…',3.2);
     }
   }
@@ -232,18 +237,10 @@ async function start() {
   });
   for(const event of ['pointerup','pointercancel','lostpointercapture'])view.addEventListener(event,()=>{pointer=null;});
   const down=(...codes)=>codes.some(code=>keys.has(code));
-  function hit(x,z,r) {
-    if (x-r<BOUNDS.minX || x+r>BOUNDS.maxX || z-r<BOUNDS.minZ || z+r>BOUNDS.maxZ) return true;
-    if(!isTraversable(x,z,r))return true;
-    for (const b of world.blocks)
-      if (Math.abs(x-b.x)<b.w/2+r && Math.abs(z-b.z)<b.d/2+r) return true;
-    for (const traffic of district.cars) {
-      const p=traffic.model.mesh.position;
-      if (Math.abs(x-p.x)>3.5 || Math.abs(z-p.z)>3.5) continue;
-      const h=traffic.model.mesh.rotation.y, dx=x-p.x, dz=z-p.z;
-      if (Math.abs(dx*Math.cos(h)-dz*Math.sin(h))<.85+r && Math.abs(dx*Math.sin(h)+dz*Math.cos(h))<1.85+r) return true;
-    }
-    return false;
+  function roadGrade(x,z,yaw){
+    if(z<=CITY_BOUNDS.maxZ&&!onCanalBridge(x,z,1.4))return 0;
+    const dx=Math.sin(yaw)*1.25,dz=Math.cos(yaw)*1.25;
+    return (world.groundHeight(x-dx,z-dz)-world.groundHeight(x+dx,z+dz))/2.5;
   }
   function standingHeight(x,z,yaw){
     const center=world.groundHeight(x,z),dx=.15*Math.cos(yaw),dz=-.15*Math.sin(yaw);
@@ -298,17 +295,18 @@ async function start() {
       }
     } else if(phase==='drive') {
       elapsed+=dt;
-      drive(vehicle,{gas,brake,turn,handbrake:down('Space'),nitro},dt,hit,damage=>{
-        bodywork.dent(damage,vehicle.speed,turn || (Math.sin(time)>0?1:-1));
+      drive(vehicle,{gas,brake,turn,handbrake:down('Space'),nitro,grade:roadGrade(vehicle.x,vehicle.z,vehicle.yaw)},dt,hit,(damage,contact)=>{
+        bodywork.dent(damage,contact);
         audio.impact();say(damage?'Удар по кузову  ·  минус $'+damage*8:'Удар по кузову');
       });
+      skidMarks.update(vehicle);
       if(district.hitVehicle(vehicle))audio.bump();
       if(!pointer && (returnDelay-=dt)<=0 && Math.abs(vehicle.speed)>1)
         {look=damp(look,0,2,dt);pitch=damp(pitch,0,2,dt);}
     }
-    hero.update(dt,vehicle.speed,vehicle.steer/.55,down('KeyS','ArrowDown','Space'));
+    hero.update(dt,vehicle.speed,vehicle.steer/.55,down('KeyS','ArrowDown','Space'),vehicle.frontWheelSpeed,vehicle.rearWheelSpeed);
     pos.set(phase==='foot'?foot.x:vehicle.x,phase==='foot'?foot.y:0,phase==='foot'?foot.z:vehicle.z);
-    district.update(dt,pos,phase==='drive');world.update(dt,time);gulls(time);
+    district.update(dt,pos,phase==='drive',vehicle);world.update(dt,time);gulls(time);
     arsenal.update(dt);
   }
   function renderActors(alpha,dt) {
@@ -317,11 +315,8 @@ async function start() {
     hero.mesh.position.set(carX,chassisHeight(carX,carZ),carZ);
     hero.mesh.rotation.y=prevVehicle.yaw+angleDiff(vehicle.yaw,prevVehicle.yaw)*alpha;
     hero.mesh.rotation.order='YXZ';
-    if(carZ>CITY_BOUNDS.maxZ){
-      const dx=Math.sin(hero.mesh.rotation.y)*1.25,dz=Math.cos(hero.mesh.rotation.y)*1.25;
-      const rise=world.groundHeight(carX-dx,carZ-dz)-world.groundHeight(carX+dx,carZ+dz);
-      hero.mesh.rotation.x=Math.atan2(rise,2.5);
-    }else hero.mesh.rotation.x=0;
+    hero.mesh.rotation.x=Math.atan(roadGrade(carX,carZ,hero.mesh.rotation.y));
+    hero.setSuspension(mix(prevVehicle.bodyPitch,vehicle.bodyPitch,alpha),mix(prevVehicle.bodyRoll,vehicle.bodyRoll,alpha));
     hero.renderWheels(alpha);
     const x=mix(prevFoot.x,foot.x),z=mix(prevFoot.z,foot.z);
     person.mesh.rotation.y=prevFoot.yaw+angleDiff(foot.yaw,prevFoot.yaw)*alpha;
@@ -415,7 +410,7 @@ async function start() {
     }
     audio.update(vehicle.speed,down('KeyW','ArrowUp'),phase==='drive',paused||consoleOpen||mapOpen||phase==='done',{
       walking:phase==='foot'&&walking&&foot.grounded,running:down('ShiftLeft','ShiftRight'),handbrake:down('Space'),
-      steer:vehicle.steer,x:pos.x,z:pos.z,nitro:nitro&&down('KeyW','ArrowUp'),gaitSynced:true});
+      steer:vehicle.steer,tireSlip:vehicle.tireSlip,x:pos.x,z:pos.z,nitro:nitro&&down('KeyW','ArrowUp'),gaitSynced:true});
     syncHUD();renderer.render(scene,camera);
   });
 }

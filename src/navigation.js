@@ -1,4 +1,4 @@
-import {AVENUES,CROSS_STREETS,BOUNDS,CITY_BOUNDS,REGION_ROADS,REGION_LAND,REGION_PLACES} from './map.js';
+import {AVENUES,CROSS_STREETS,BOUNDS,CITY_BOUNDS,CANAL_BANK,CANAL_ROAD,CANAL_BRIDGES,OPPOSITE_BANK,PORT_FENCE,REGION_ROADS,REGION_LAND,REGION_PLACES} from './map.js';
 
 const grid=[];
 for(let i=0;i<AVENUES.length;i++)for(let j=0;j<CROSS_STREETS.length;j++){
@@ -7,6 +7,8 @@ for(let i=0;i<AVENUES.length;i++)for(let j=0;j<CROSS_STREETS.length;j++){
   if(j)grid.push([[x,z],[x,CROSS_STREETS[j-1]]]);
 }
 const pier=[[0,-160],[38,-160]];
+grid.push([PORT_FENCE+3,...CANAL_BRIDGES,CITY_BOUNDS.maxZ-2].map(z=>[CANAL_ROAD,z]));
+for(const z of CANAL_BRIDGES)grid.push([[AVENUES[0],z],[CANAL_ROAD,z]]);
 const paths=[...grid,pier,...REGION_ROADS];
 const nodes=[],vertices=new Map(),edges=[];
 function node(x,z){
@@ -54,7 +56,7 @@ export function roadRoute(x,z,tx,tz){
 }
 
 export const destinations=[{id:'mission',name:'Мастерская',x:38,z:-160},...REGION_PLACES,
-  {id:'HAVANA',name:'Little Havana',x:-190,z:12},{id:'MARINA',name:'Marina Keys',x:3,z:-332}];
+  {id:'HAVANA',name:'Little Havana',x:-190,z:12},{id:'CANAL',name:'Набережная канала',x:CANAL_ROAD,z:32},{id:'MARINA',name:'Marina Keys',x:3,z:-332}];
 
 export function drawCoastMap(canvas,s,overview=false){
   const r=canvas.getBoundingClientRect(),w=Math.round(r.width),h=Math.round(r.height);
@@ -79,6 +81,10 @@ export function drawCoastMap(canvas,s,overview=false){
     shape([...polygon,polygon[0]],null,'#48736e',Math.max(2,9*scale));
   }
   rect(CITY_BOUNDS.minX,CITY_BOUNDS.minZ,CITY_BOUNDS.maxX-CITY_BOUNDS.minX,CITY_BOUNDS.maxZ-CITY_BOUNDS.minZ,'#424f49');
+  rect(-1250,PORT_FENCE,1250+OPPOSITE_BANK,CITY_BOUNDS.maxZ-PORT_FENCE,'#55604f');
+  rect(-1250,-1220,1307,1220+PORT_FENCE,'#52605b');
+  rect(CANAL_BANK,PORT_FENCE,AVENUES[0]-7.3-CANAL_BANK,CITY_BOUNDS.maxZ-PORT_FENCE,'#8a967b');
+  for(let z=PORT_FENCE+12;z<CITY_BOUNDS.maxZ-10;z+=39)rect(CANAL_ROAD-25,z,15,23,'#797c6c');
   rect(17,CITY_BOUNDS.minZ,37,CITY_BOUNDS.maxZ-CITY_BOUNDS.minZ,'#9e9477');
   for(const polygon of REGION_LAND)shape(polygon,'#586953','#798975',overview?.8:1.2);
   for(let z=-400;z< -228;z+=32){rect(47,z-1,26,2,'#b2aa90');rect(72,z-1,1.5,14,'#b2aa90');}
