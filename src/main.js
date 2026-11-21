@@ -43,15 +43,17 @@ async function start() {
   Object.assign(sun.shadow.camera,{left:-68,right:68,top:68,bottom:-68,near:.5,far:195});
   sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias=-.00025;sun.shadow.normalBias=.032;
-  scene.add(sun,sun.target,new T.HemisphereLight(0xffddcc,0x8a829b,0.5));
+  const skyFill=new T.HemisphereLight(0xdcefff,0xb29377,.69);
+  scene.add(sun,sun.target,skyFill);
   const world=createWorld(scene);
-  const destruction=createDestruction(scene,world.blocks,world.groundHeight);
+  const audio=createAudio();
+  const destruction=createDestruction(scene,world.blocks,world.groundHeight,kind=>audio[kind]());
   const skidMarks=createSkidMarks(scene,world.groundHeight);
   const gulls=addGulls(scene);
   const hero=createCar({hero:true,color:0xa82e24});
   const person=createPerson({color:0x28796f});
   scene.add(hero.mesh,person.mesh);
-  const district=createDistrict(scene,world.blocks,world.groundHeight), audio=createAudio(), keys=new Set();
+  const district=createDistrict(scene,world.blocks,world.groundHeight),keys=new Set();
   const hit=district.hit;
   const arsenal=createArsenal(scene,person,hero,district,world);
   const cameraBlocks=world.blocks.filter(b=>b.w>2.8 && b.d>2.8).map(b=>({...b,w:b.w+.36,d:b.d+.36}));
@@ -80,9 +82,10 @@ async function start() {
   function say(message,seconds=2.7) {toast=message;toastTime=seconds;}
   function setNight(value) {
     night=value;lights.visible=value;
+    world.setNight(value);hero.setNight(value);skyFill.intensity=value?.20:.69;
     scene.backgroundIntensity=value?.055:.62;scene.environmentIntensity=value?.18:.49;
     scene.fog.color.setHex(value?0x303153:0xe2bbb0);
-    sun.color.setHex(value?0x97abff:0xffb678);sun.intensity=value?.74:3.2;
+    sun.color.setHex(value?0x97abff:0xffbb86);sun.intensity=value?.57:3.05;
     renderer.toneMappingExposure=value?.94:.86;
   }
   function syncPose() {
@@ -318,6 +321,10 @@ async function start() {
         {look=damp(look,0,2,dt);pitch=damp(pitch,0,2,dt);}
     }
     hero.update(dt,vehicle.speed,vehicle.steer/.55,down('KeyS','ArrowDown','Space'),vehicle.frontWheelSpeed,vehicle.rearWheelSpeed);
+    if(night){
+      for(let i=0;i<2;i++)lights.children[i*2].intensity=55*hero.headlightStrength(i);
+      world.updateLamps(phase==='foot'?foot.x:vehicle.x,phase==='foot'?foot.z:vehicle.z);
+    }
     pos.set(phase==='foot'?foot.x:vehicle.x,phase==='foot'?foot.y:0,phase==='foot'?foot.z:vehicle.z);
     district.update(dt,pos,phase==='drive',vehicle);world.update(dt,time);gulls(time);
     arsenal.update(dt);destruction.update(dt);

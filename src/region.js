@@ -161,7 +161,7 @@ function canopyTexture(canvasTexture,rnd){
   });
 }
 
-function vegetate(b,m,rnd,blocks,tools){
+function vegetate(b,m,rnd,tools){
   function scannedAtlas(name) {
     const map=new T.TextureLoader().load('/world/'+name+'-atlas.webp');
     // The atlas already contains the shading of the scanned branches. Lift its
@@ -180,7 +180,15 @@ function vegetate(b,m,rnd,blocks,tools){
     return mat;
   }
   const shadeTree=scannedAtlas('island_tree_01'),saltsprig=scannedAtlas('shrub_02');
+  function tree(x,z,h,build){
+    const handle=b.breakable('tree',x,z,.54,.54,build);
+    handle.hinge=[x,.19,z];handle.spine=[.35,.68,1].map(t=>[x,.19+h*t,z]);
+  }
   function scan(mat,x,y,z,h,angle,tint='#ffffff') {
+    const build=()=>drawScan(mat,x,y,z,h,angle,tint);
+    if(mat===shadeTree)tree(x,z,h,build);else b.breakable('shrub',x,z,.36,.36,build);
+  }
+  function drawScan(mat,x,y,z,h,angle,tint) {
     const r=h*(mat===shadeTree?.458:.485);
     for(let k=0;k<2;k++){
       const a=angle+k*Math.PI*.5,dx=r*Math.cos(a),dz=r*Math.sin(a),u=k*.5;
@@ -241,19 +249,18 @@ function vegetate(b,m,rnd,blocks,tools){
   for(let i=0;i<1500;i++){
     const x=-340+rnd()*585,z=175+rnd()*491,land=landIndexAt(x,z);
     if(land<0||occupied(x,z,4)||!roadClear(x,z,10))continue;
-    const salt=x>15;const near=roadSample(x,z);
+    const salt=x>15;
     if(salt){
       if(i%5===0){tools.palm(b,m,rnd,x,z,5.9+rnd()*3.6,rnd()*6.28);}
       else if(i%3===0)scan(shadeTree,x,.12,z,4.2+rnd()*3.6,rnd()*6.28);
-      else if(i%4===0)mangrove(x,z,2.6+rnd()*1.7);
+      else if(i%4===0){const h=2.6+rnd()*1.7;tree(x,z,h,()=>mangrove(x,z,h));}
       else scan(saltsprig,x,.12,z,.8+rnd()*1.1,rnd()*6.28);
     }else{
-      if(i%6===0)cypress(x,z,5.3+rnd()*5.8);
+      if(i%6===0){const h=5.3+rnd()*5.8;tree(x,z,h,()=>cypress(x,z,h));}
       else if(i%3===1)scan(shadeTree,x,.12,z,4.3+rnd()*4.9,rnd()*6.28);
-      else if(i%5===0)mangrove(x,z,3.1+rnd()*1.6);
+      else if(i%5===0){const h=3.1+rnd()*1.6;tree(x,z,h,()=>mangrove(x,z,h));}
       else reeds(x,z,1.0+rnd()*1.2);
     }
-    if(near&&near.distance<18&&i%4===0)blocks.push({x,z,w:.55,d:.55});
   }
   // Clusters of salt-tolerant brush along the highway's sandy shoulders.
   for(let i=4;i<ROAD_STATIONS.length-4;i+=2){
@@ -267,13 +274,11 @@ function vegetate(b,m,rnd,blocks,tools){
     }
     if(i%8===4&&Math.abs(off)>9.2 && !occupied(x,z,5)) {
       scan(shadeTree,x,.12,z,4.3+rnd()*2.4,rnd()*6.28);
-      blocks.push({x,z,w:.64,d:.64});
     }
   }
   for(const [x,z,h] of [[142,421,6.0],[136,408,5.5],[134,392,5.9],[161,378,5.1],[161,443,4.7]]){
     if(landIndexAt(x,z)>=0 && roadClear(x,z,7.2) && !occupied(x,z,2)){
       scan(shadeTree,x,.12,z,h,.33+rnd()*.5);
-      blocks.push({x,z,w:.72,d:.72});
     }
   }
   // Edge vegetation outlines the ragged river banks from both road and water.
@@ -340,12 +345,12 @@ function wayfinding(b,m,canvasTexture){
   }
 }
 
-export function buildRegion(scene,b,m,blocks,tools) {
+export function buildRegion(scene,b,m,tools) {
   const rnd=tools.randomGenerator(73851);
   drawLand(scene,rnd);
   const water=tidalWater(scene);
   highway(b,m);
-  vegetate(b,m,rnd,blocks,tools);
+  vegetate(b,m,rnd,tools);
   countyPoles(b,m);
   wayfinding(b,m,tools.canvasTexture);
   return t=>{water.value=t;};

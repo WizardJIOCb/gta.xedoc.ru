@@ -43,9 +43,9 @@ function site(b,m,blocks,p,atlas){
   function box(mat,x,y,z,w,hh,d,col,rot=0){b.box(mat,...rotate(x,y,z),w,hh,d,col,yaw+rot);}
   function bar(a,e,r,col,mat=m.chrome){b.rod(mat,rotate(...a),rotate(...e),r,col);}
   function quad(coords,col,mat=m.fabric,uv){b.quad(mat,coords.map(a=>rotate(...a)),uv,col);}
-  function solid(x,z,w,d){
+  function solid(x,z,w,d,breakable){
     const [wx,,wz]=rotate(x,0,z);
-    blocks.push({x:wx,z:wz,w:Math.abs(c)*w+Math.abs(s)*d,d:Math.abs(s)*w+Math.abs(c)*d});
+    blocks.push({x:wx,z:wz,w:Math.abs(c)*w+Math.abs(s)*d,d:Math.abs(s)*w+Math.abs(c)*d,breakable});
   }
   function loose(kind,x,z,w,d,build){
     const [wx,,wz]=rotate(x,0,z);
@@ -57,7 +57,11 @@ function site(b,m,blocks,p,atlas){
     quad([[x+w/2,cy-hh/2,z-.06],[x-w/2,cy-hh/2,z-.06],[x-w/2,cy+hh/2,z-.06],[x+w/2,cy+hh/2,z-.06]],
       '#ffffff',atlas,[[u+.002,v-us+.002],[u+us-.002,v-us+.002],[u+us-.002,v-.002],[u+.002,v-.002]]);
   }
-  return {m,box,bar,part,quad,solid,sign,loose};
+  function building(x,z,w,d,height,build){
+    const [wx,,wz]=rotate(x,0,z);
+    b.building(wx,wz,Math.abs(c)*w+Math.abs(s)*d,Math.abs(c)*d+Math.abs(s)*w,height,build);
+  }
+  return {m,box,bar,part,quad,solid,sign,loose,building};
 }
 
 function windowFront(S,x,y,z,w,h,shutters=false){
@@ -105,17 +109,19 @@ function fishCrate(S,x,z,stack=0){
   for(const side of [-1,1])box(m.trim,x+.40*side,.19+y,z-.382,.07,.37,.05,'#b1946d');
 }
 function outpost(S){
-  const {m,box,bar,part,solid,sign}=S;
+  const {m,box,bar,part,sign}=S;
   // Weathered bait shack with flyscreen door and a corrugated tin awning.
   const cx=-5.2,cz=3.2;
-  timber(S,cx,1.79,cz,6.7,2.9,4.2,'#bec3a0');solid(cx,cz,6.8,4.4);
-  box(m.stone,cx,.20,cz,6.82,.38,4.32,'#908978');
-  roof(S,cx,cz,7.24,4.76,3.31,.92,'#76887e');
-  porch(S,cx,-.17,6.98,2.44,.37,2.92);
-  windowFront(S,-5.68,1.85,1.07,2.03,1.07,true);
-  box(m.trim,-2.98,1.36,1.025,1.13,2.00,.12,'#4b6c66');
-  box(m.glass,-2.97,1.57,.945,.80,1.22,.04,'#647d74');
-  sign(0,cx,2.86,-1.52,4,.92);
+  S.building(cx,cz,6.8,4.4,4,()=>{
+    timber(S,cx,1.79,cz,6.7,2.9,4.2,'#bec3a0');
+    box(m.stone,cx,.20,cz,6.82,.38,4.32,'#908978');
+    roof(S,cx,cz,7.24,4.76,3.31,.92,'#76887e');
+    porch(S,cx,-.17,6.98,2.44,.37,2.92);
+    windowFront(S,-5.68,1.85,1.07,2.03,1.07,true);
+    box(m.trim,-2.98,1.36,1.025,1.13,2.00,.12,'#4b6c66');
+    box(m.glass,-2.97,1.57,.945,.80,1.22,.04,'#647d74');
+    sign(0,cx,2.86,-1.52,4,.92);
+  });
   for(const x of [-8.8,-7.7]){
     S.loose('crate',x,-1.35,1.02,.76,()=>{
       fishCrate(S,x,-1.35);fishCrate(S,x,-1.35,1);
@@ -123,19 +129,20 @@ function outpost(S){
   }
   // Painted travel trailer with chamfered ends, steel hitch and two axles.
   const tx=5.0,tz=1.52;
-  box(m.chrome,tx,.68,tz,7.8,.19,2.78,'#615f56');
-  box(m.stone,tx,1.88,tz,7.62,2.22,2.66,'#e1d6b8');
-  for(const side of [-1,1]){
-    part('oval',m.trim,tx+side*3.74,1.90,tz,.40,1.06,1.30,'#d3cbb6');
-    for(let j=0;j<2;j++)part('disc',m.trim,tx-.68+j*1.28,.59,tz+side*1.30,.43,.20,.43,'#393b38',Math.PI*.5);
-  }
-  part('oval',m.trim,tx,3.00,tz,3.91,.24,1.37,'#dad3c2');
-  box(m.trim,tx,1.52,tz-1.345,7.37,.22,.04,'#9e7459');
-  for(const dx of [-2.48,.07,2.42])windowFront(S,tx+dx,2.23,tz-1.35,1.19,.73);
-  for(let i=0;i<6;i++)box(m.chrome,tx-1.24,.96+i*.10,tz-1.35,1.23,.014,.035,'#b1aa98');
-  bar([8.78,.85,.41],[10.25,.65,1.52],.069,'#939187');bar([8.78,.85,2.66],[10.25,.65,1.52],.069,'#939187');
-  solid(tx,tz,8.10,2.9);
-  box(m.trim,tx+.2,3.25,tz,1.27,.34,.80,'#b8b4a7');
+  S.loose('trailer',tx,tz,8.10,2.9,()=>{
+    box(m.chrome,tx,.68,tz,7.8,.19,2.78,'#615f56');
+    box(m.stone,tx,1.88,tz,7.62,2.22,2.66,'#e1d6b8');
+    for(const side of [-1,1]){
+      part('oval',m.trim,tx+side*3.74,1.90,tz,.40,1.06,1.30,'#d3cbb6');
+      for(let j=0;j<2;j++)part('disc',m.trim,tx-.68+j*1.28,.59,tz+side*1.30,.43,.20,.43,'#393b38',Math.PI*.5);
+    }
+    part('oval',m.trim,tx,3.00,tz,3.91,.24,1.37,'#dad3c2');
+    box(m.trim,tx,1.52,tz-1.345,7.37,.22,.04,'#9e7459');
+    for(const dx of [-2.48,.07,2.42])windowFront(S,tx+dx,2.23,tz-1.35,1.19,.73);
+    for(let i=0;i<6;i++)box(m.chrome,tx-1.24,.96+i*.10,tz-1.35,1.23,.014,.035,'#b1aa98');
+    bar([8.78,.85,.41],[10.25,.65,1.52],.069,'#939187');bar([8.78,.85,2.66],[10.25,.65,1.52],.069,'#939187');
+    box(m.trim,tx+.2,3.25,tz,1.27,.34,.80,'#b8b4a7');
+  });
   // Hanging net, colourful floats and roadside ice locker.
   S.loose('fence',5.5,-3.85,6.35,.18,()=>{
     for(const x of [2.4,8.6])bar([x,.02,-3.85],[x,2.11,-3.85],.075,'#857051',m.stone);
@@ -152,7 +159,6 @@ function outpost(S){
     box(m.chrome,-9.82,.76,-3.03,.034,.24,.05,'#586f71');
   });
 }
-
 // Skiff hull built from continuous keel/chine/gunwale sections rather than
 // stacked boxes. The same sections support the airboat's flat deck.
 function hull(S,x,z,width,length,keel,paint){
@@ -172,15 +178,17 @@ function hull(S,x,z,width,length,keel,paint){
   S.quad([point(end,-1,1),point(end,1,1),point(end,1,2),point(end,-1,2)],paint);
 }
 function keys(S){
-  const {m,box,part,bar,sign,solid}=S;
+  const {m,box,part,bar,sign}=S;
   const cx=-4.5,cz=3.4;
-  box(m.ribbed,cx,2.25,cz,9.6,4.34,5.98,'#c7c6b1');solid(cx,cz,9.6,6);
-  roof(S,cx,cz,10.12,6.6,4.42,.89,'#7a9a9b');
-  box(m.chrome,cx-.64,1.78,.375,5.0,3.32,.12,'#7d9593');
-  for(let j=0;j<16;j++)box(m.trim,cx-.64,.20+j*.204,.290,4.98,.031,.05,'#a8b0a2');
-  windowFront(S,-.85,2.19,.34,1.20,.92);
-  for(let j=0;j<14;j++)box(m.chrome,-9.33,2.27,.55+j*.42,.07,4.1,.035,'#9ca59b');
-  sign(1,cx,4.00,-.06,7.1,.99);
+  S.building(cx,cz,9.6,6,5,()=>{
+    box(m.ribbed,cx,2.25,cz,9.6,4.34,5.98,'#c7c6b1');
+    roof(S,cx,cz,10.12,6.6,4.42,.89,'#7a9a9b');
+    box(m.chrome,cx-.64,1.78,.375,5.0,3.32,.12,'#7d9593');
+    for(let j=0;j<16;j++)box(m.trim,cx-.64,.20+j*.204,.290,4.98,.031,.05,'#a8b0a2');
+    windowFront(S,-.85,2.19,.34,1.20,.92);
+    for(let j=0;j<14;j++)box(m.chrome,-9.33,2.27,.55+j*.42,.07,4.1,.035,'#9ca59b');
+    sign(1,cx,4.00,-.06,7.1,.99);
+  });
   S.loose('sign',-8.62,-3.98,.32,.30,()=>{
     box(m.stone,-8.62,1.92,-3.98,.18,3.84,.18,'#a3a693');
     sign(3,-8.62,3.29,-4.05,2.26,1.08);
@@ -198,20 +206,25 @@ function keys(S){
       bar([x+.81,.56,-4.46],[x+.48,1.31,-4.46],.035,'#383735');
     });
   }
-  for(const x of [-7.17,-1.75])bar([x,.07,-4.30],[x,3.1,-4.30],.078,'#88928b');
-  box(m.trim,-4.46,3.15,-4.30,6.43,.14,2.7,'#b8beb0');
-  box(m.trim,-4.46,3.09,-5.65,6.46,.16,.09,'#b4674b');
+  const canopy=S.loose('canopy',-7.17,-4.30,.18,.18,()=>{
+    for(const x of [-7.17,-1.75])bar([x,.07,-4.30],[x,3.1,-4.30],.078,'#88928b');
+    box(m.trim,-4.46,3.15,-4.30,6.43,.14,2.7,'#b8beb0');
+    box(m.trim,-4.46,3.09,-5.65,6.46,.16,.09,'#b4674b');
+  });
+  S.solid(-1.75,-4.30,.18,.18,canopy);
   const bx=5.80,bz=.44;
-  hull(S,bx,bz,3.10,7.88,.94,'#4f8389');solid(bx,bz,3.52,7.92);
-  for(const z of [-1.63,2.47])for(const side of [-1,1]){
-    box(m.stone,bx+side*.97,.13,z,1.19,.19,.80,'#8f795f');
-    bar([bx+side*1.38,.18,z],[bx+side*.80,1.44,z],.082,'#766f61');
-  }
-  box(m.stone,bx,1.97,bz-.16,1.03,.79,.71,'#ded3b4');
-  box(m.glass,bx,2.55,bz-.34,.95,.39,.12,'#71999c');
-  for(const side of [-1,1])bar([bx+side*.94,1.51,bz+.10],[bx+side*.94,3.12,bz+.10],.036,'#bfc5b7');
-  box(m.trim,bx,3.15,bz+.16,2.4,.08,1.65,'#c4c8ab');
-  box(m.chrome,bx,1.39,bz+4.13,.52,.83,.4,'#52595b');
+  S.loose('boat',bx,bz,3.52,7.92,()=>{
+    hull(S,bx,bz,3.10,7.88,.94,'#4f8389');
+    for(const z of [-1.63,2.47])for(const side of [-1,1]){
+      box(m.stone,bx+side*.97,.13,z,1.19,.19,.80,'#8f795f');
+      bar([bx+side*1.38,.18,z],[bx+side*.80,1.44,z],.082,'#766f61');
+    }
+    box(m.stone,bx,1.97,bz-.16,1.03,.79,.71,'#ded3b4');
+    box(m.glass,bx,2.55,bz-.34,.95,.39,.12,'#71999c');
+    for(const side of [-1,1])bar([bx+side*.94,1.51,bz+.10],[bx+side*.94,3.12,bz+.10],.036,'#bfc5b7');
+    box(m.trim,bx,3.15,bz+.16,2.4,.08,1.65,'#c4c8ab');
+    box(m.chrome,bx,1.39,bz+4.13,.52,.83,.4,'#52595b');
+  });
   // Travel hoist columns, lifting chain and slings above the hauled boat.
   for(const side of [-1,1]){
     box(m.trim,bx+side*2.61,.23,bz+.85,.63,.32,3.31,'#638783');
@@ -225,19 +238,21 @@ function keys(S){
 function glades(S){
   const {m,box,bar,part,solid,sign}=S;
   const cx=-4.6,cz=2.9;
-  for(const side of [-1,1])for(const end of [-1,1]){
-    box(m.stone,cx+side*3.12,.78,cz+end*2.10,.23,1.53,.23,'#776957');
-    bar([cx-3.1,.24,cz+end*2.1],[cx+3.1,1.37,cz+end*2.10],.061,'#89795f',m.stone);
-  }
-  timber(S,cx,2.84,cz,6.54,2.83,4.57,'#82917a');solid(cx,cz,6.6,4.6);
-  roof(S,cx,cz,7.39,5.27,4.28,1.08,'#77694f');
-  porch(S,cx,-.64,7.17,2.13,1.44,3.76);
-  windowFront(S,cx-1.4,2.86,.59,1.71,.97,true);
-  box(m.stone,cx+1.45,2.48,.56,1.18,2.03,.13,'#a69b7d');
-  box(m.glass,cx+1.45,2.93,.47,.71,.72,.05,'#607575');
-  sign(2,cx,3.34,-1.98,4.19,.78);
-  for(let i=0;i<7;i++)box(m.stone,cx+2.35,1.34-i*.191,-1.93-i*.32,1.39,.15,.36,'#a18b6f');
-  for(const side of [-1,1])bar([cx+2.35+side*.68,2.19,-1.86],[cx+2.35+side*.68,.87,-4.12],.049,'#8f7f66');
+  S.building(cx,cz,6.6,4.6,5.4,()=>{
+    for(const side of [-1,1])for(const end of [-1,1]){
+      box(m.stone,cx+side*3.12,.78,cz+end*2.10,.23,1.53,.23,'#776957');
+      bar([cx-3.1,.24,cz+end*2.1],[cx+3.1,1.37,cz+end*2.10],.061,'#89795f',m.stone);
+    }
+    timber(S,cx,2.84,cz,6.54,2.83,4.57,'#82917a');
+    roof(S,cx,cz,7.39,5.27,4.28,1.08,'#77694f');
+    porch(S,cx,-.64,7.17,2.13,1.44,3.76);
+    windowFront(S,cx-1.4,2.86,.59,1.71,.97,true);
+    box(m.stone,cx+1.45,2.48,.56,1.18,2.03,.13,'#a69b7d');
+    box(m.glass,cx+1.45,2.93,.47,.71,.72,.05,'#607575');
+    sign(2,cx,3.34,-1.98,4.19,.78);
+    for(let i=0;i<7;i++)box(m.stone,cx+2.35,1.34-i*.191,-1.93-i*.32,1.39,.15,.36,'#a18b6f');
+    for(const side of [-1,1])bar([cx+2.35+side*.68,2.19,-1.86],[cx+2.35+side*.68,.87,-4.12],.049,'#8f7f66');
+  });
   // An airboat's pusher cage, rudders and tandem high seats.
   const x=5.47,z=.04;hull(S,x,z,2.73,5.80,.20,'#799080');solid(x,z,2.83,5.86);
   const fanZ=z+1.46,fanY=1.89,r=1.17;

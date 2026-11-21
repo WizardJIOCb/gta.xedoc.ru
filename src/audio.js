@@ -20,7 +20,7 @@ function noiseBuffer(ctx) {
 // Short sounds are rendered once. Rapid impacts reuse buffers instead of
 // allocating a new bank of envelopes and oscillators for every contact.
 function makeEffect(ctx, kind) {
-  const duration = { foot: .145, sand: .17, bump: .22, impact: .48, breakage:.39, pulse: .56, gear: .105 }[kind];
+  const duration = { foot: .145, sand: .17, bump: .22, impact: .48, breakage:.39, timber:.63,collapse:1.36,pulse: .56, gear: .105 }[kind];
   const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate);
   const out = buffer.getChannelData(0);
   let filtered = 0, phase = 0;
@@ -41,6 +41,16 @@ function makeEffect(ctx, kind) {
         value = .74 * Math.sin(TAU * (45 * t + 1.7 * (1 - Math.exp(-t * 32)))) * Math.exp(-t * 21)
           + .39 * filtered * Math.exp(-t * 29);
         break;
+      case 'timber':{
+        const snap=Math.max(0,Math.cos(70*t+29*t*t))**12;
+        value=(.72*noise*snap+.50*filtered)*Math.exp(-t*7)+.24*Math.sin(TAU*73*t)*Math.exp(-t*13);
+        break;
+      }
+      case 'collapse':{
+        const fall=Math.min(1,t*6)*Math.exp(-2.8*t);
+        value=(1.35*filtered+.44*Math.sin(TAU*(41*t-4*t*t)))*fall+.29*noise*Math.max(0,Math.cos(37*t))**8*fall;
+        break;
+      }
       case 'breakage':{
         const rattle=Math.max(0,Math.cos(t*104))**6;
         value=.68*noise*Math.exp(-t*39)+rattle*(.64*filtered+.23*Math.sin(TAU*479*t))*Math.exp(-t*8);
@@ -244,5 +254,6 @@ export function createAudio() {
   return { wake, update, mute, footstep, nextStation, station: () => STATIONS[stationIndex].name,
     pulse: () => playEffect('pulse', .82), bump: () => playEffect('bump', .69),
     breakage: () => playEffect('breakage',.82,0,.87+Math.random()*.23),
+    timber:()=>playEffect('timber',.86),collapse:()=>playEffect('collapse',.88),
     impact: () => playEffect('impact', .91, -.08, .91 + Math.random() * .15) };
 }

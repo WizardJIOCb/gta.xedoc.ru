@@ -99,7 +99,6 @@ export function buildCityEdge(b,m,blocks,tools){
     for(const dz of [-13,12]){
       const x=westRoad-3.25,z=mid+dz;
       palm(b,m,rnd,x,z,6.6+rnd()*2.4,rnd()*6.28);
-      blocks.push({x,z,w:.55,d:.55});
       shrub(b,m,rnd,x+1.1,z+2.8,.70);
     }
     bench(b,m,CANAL_BANK+4.4,mid,-1);streetLight(b,m,westRoad-1.15,mid+6,1);
@@ -115,21 +114,21 @@ export function buildCityEdge(b,m,blocks,tools){
   for(let j=0;j<15;j++){
     const z=PORT_FENCE+20+j*39,front=CANAL_ROAD-10-rnd()*2;
     const levels=2+(j%4),h=levels*2.9,d=24+rnd()*8,w=12+rnd()*5;
-    b.box(m.masonry,front-w/2,h/2+.05,z,w,h,d,facades[j%5]);
-    blocks.push({x:front-w/2,z,w,d});
-    for(let k=0;k<2;k++)eastFace(b,m.facade,front+.025,.10,z+(k-.5)*d/2,d*.497,h-.10,j%12,3);
-    b.box(m.trim,front-w/2,h+.16,z,w+.65,.30,d+.6,'#dacfb9');
-    if(j%3===0){
-      for(let level=1;level<levels;level++){
-        const y=level*2.9;b.box(m.stone,front+.55,y,z,1.45,.18,d*.72,'#e3d8c5');
-        b.box(m.chrome,front+1.19,y+.77,z,.055,.07,d*.72,iron);
-        for(let dz=-d*.35;dz<d*.36;dz+=2.2)b.box(m.chrome,front+1.19,y+.39,z+dz,.045,.78,.045,iron);
+    b.building(front-w/2,z,w,d,h,()=>{
+      b.box(m.masonry,front-w/2,h/2+.05,z,w,h,d,facades[j%5]);
+      for(let k=0;k<2;k++)eastFace(b,m.facade,front+.025,.10,z+(k-.5)*d/2,d*.497,h-.10,j%12,3);
+      b.box(m.trim,front-w/2,h+.16,z,w+.65,.30,d+.6,'#dacfb9');
+      if(j%3===0){
+        for(let level=1;level<levels;level++){
+          const y=level*2.9;b.box(m.stone,front+.55,y,z,1.45,.18,d*.72,'#e3d8c5');
+          b.box(m.chrome,front+1.19,y+.77,z,.055,.07,d*.72,iron);
+          for(let dz=-d*.35;dz<d*.36;dz+=2.2)b.box(m.chrome,front+1.19,y+.39,z+dz,.045,.78,.045,iron);
+        }
       }
-    }
+    });
     const nearBridge=CANAL_BRIDGES.some(at=>Math.abs(z+10-at)<8);
     if(!nearBridge){
       palm(b,m,rnd,OPPOSITE_BANK-3,z+10,5.8+rnd()*2,rnd()*6.28);
-      blocks.push({x:OPPOSITE_BANK-3,z:z+10,w:.6,d:.6});
     }
     if(j%2===1){
       b.box(m.wood,OPPOSITE_BANK+1.75,-.18,z-8,3.9,.26,8,'#ad8e65');
@@ -168,8 +167,9 @@ export function buildCityEdge(b,m,blocks,tools){
   for(const x of AVENUES){
     panels(from,x-4.3);from=x+4.3;
     for(const side of [-1,1]){
-      b.box(m.stone,x+side*4.3,1.32,fenceZ,.52,2.62,.56,stone);
-      blocks.push({x:x+side*4.3,z:fenceZ,w:.52,d:.56});
+      b.breakable('bollard',x+side*4.3,fenceZ,.52,.56,()=>{
+        b.box(m.stone,x+side*4.3,1.32,fenceZ,.52,2.62,.56,stone);
+      });
     }
     b.breakable('gate',x,fenceZ,8.1,.20,()=>{
       for(const y of [.38,1.96])b.box(m.chrome,x,y,fenceZ,8.1,.12,.12,iron);
@@ -179,26 +179,28 @@ export function buildCityEdge(b,m,blocks,tools){
         b.quad(sign,[[x-3,.65,fenceZ+.12],[x+3,.65,fenceZ+.12],[x+3,2.02,fenceZ+.12],[x-3,2.02,fenceZ+.12]]);
     });
     if(x===-128||x===0){
-      b.box(m.masonry,x+7.8,1.61,fenceZ-2,4.85,3.2,4,'#e7d6ba');
-      blocks.push({x:x+7.8,z:fenceZ-2,w:4.85,d:4});
-      b.box(m.glass,x+7.8,2.03,fenceZ+.05,4.15,1.12,.1,'#4e7078');
-      b.box(m.trim,x+7.8,3.30,fenceZ-2,5.3,.23,4.5,iron);
+      b.building(x+7.8,fenceZ-2,4.85,4,3.4,()=>{
+        b.box(m.masonry,x+7.8,1.61,fenceZ-2,4.85,3.2,4,'#e7d6ba');
+        b.box(m.glass,x+7.8,2.03,fenceZ+.05,4.15,1.12,.1,'#4e7078');
+        b.box(m.trim,x+7.8,3.30,fenceZ-2,5.3,.23,4.5,iron);
+      });
     }
   }
   panels(from,fenceRight);
   for(let j=0;j<6;j++){
     const x=-251+j*49,z=PORT_FENCE-25-(j%2)*7,w=32+rnd()*6,d=24,h=6.3+rnd()*3.2;
-    b.box(m.ribbed,x,h/2,z,w,h,d,'#c5c8bb');
-    blocks.push({x,z,w,d});
-    const front=z+d/2+.015;
-    b.quad(m.harbor,[[x-w/2,.08,front],[x+w/2,.08,front],[x+w/2,h,front],[x-w/2,h,front]]);
-    b.box(m.trim,x,h+.22,z,w+1,.41,d+1,'#769093');
-    for(let k=-1;k<=1;k++){
-      const xx=x+k*9,zDoor=z+d/2+.05;
-      b.box(m.chrome,xx,2.2,zDoor,5.7,4.42,.11,'#798988');
-      for(let n=0;n<6;n++)b.box(m.stone,xx,.52+n*.62,zDoor+.067,5.65,.06,.04,'#a5aea2');
-    }
-    for(let k=0;k<3;k++)b.box(m.stone,x-10+k*8,h+.66,z+2,3.1,.9,2.3,'#a7ad9d');
+    b.building(x,z,w,d,h,()=>{
+      b.box(m.ribbed,x,h/2,z,w,h,d,'#c5c8bb');
+      const front=z+d/2+.015;
+      b.quad(m.harbor,[[x-w/2,.08,front],[x+w/2,.08,front],[x+w/2,h,front],[x-w/2,h,front]]);
+      b.box(m.trim,x,h+.22,z,w+1,.41,d+1,'#769093');
+      for(let k=-1;k<=1;k++){
+        const xx=x+k*9,zDoor=z+d/2+.05;
+        b.box(m.chrome,xx,2.2,zDoor,5.7,4.42,.11,'#798988');
+        for(let n=0;n<6;n++)b.box(m.stone,xx,.52+n*.62,zDoor+.067,5.65,.06,.04,'#a5aea2');
+      }
+      for(let k=0;k<3;k++)b.box(m.stone,x-10+k*8,h+.66,z+2,3.1,.9,2.3,'#a7ad9d');
+    });
     streetLight(b,m,x+20,z+14,1);
   }
   for(let j=0;j<4;j++){

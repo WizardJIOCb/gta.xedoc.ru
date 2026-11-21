@@ -1,12 +1,14 @@
 import * as T from 'three';
 import { clearRange, weaponSpecs } from './pulse.js';
+import { createRuins } from './ruins.js';
 
 // Closing speed in metres per second. A slow graze can move a plastic bin,
 // while anchored railings and steel poles need a much more direct impact.
 const resistance={
   shrub:1.6, bin:1.9, chair:2.1, crate:2.6, umbrella:2.8, table:3.4,
   fence:3.8, sign:4.4, bench:4.8, rail:5.4, meter:5.8, gate:7.6,
-  bollard:8.2, lamp:8.5, signal:9.5
+  bollard:8.2, lamp:8.5, signal:9.5,palm:10.5,tree:9.5,container:10.2,trailer:8.6,fountain:10.3,
+  canopy:6.4,boat:9.2
 };
 const MAX_MOVING=48, unit=new T.Vector3(1,1,1);
 const v=()=>new T.Vector3();
@@ -112,8 +114,10 @@ function makeBody(parts,dx,dz,speed,x,z,variation){
     invInertia:2.4/(radius*radius),rotation:new T.Quaternion(),age:0,rest:0};
 }
 
-export function createDestruction(scene,blocks,groundHeight){
+export function createDestruction(scene,blocks,groundHeight,onEffect=()=>{}){
   const active=[],changed=new Map(),frames=new WeakMap();
+  const structural=new Map(),ruins=createRuins(scene,groundHeight);
+  let time=0;
   const temp=v(),arm=v(),contact=v(),axis=v(),normalVelocity=v();
   const pose=new T.Matrix4(),local=new T.Matrix4(),partMatrix=new T.Matrix4();
   const normalMatrix=new T.Matrix3(),spin=new T.Quaternion();
@@ -122,7 +126,10 @@ export function createDestruction(scene,blocks,groundHeight){
     pose.compose(body.center,body.rotation,unit);
     temp.copy(body.pivot).applyQuaternion(body.rotation).negate().add(body.center);
     pose.setPosition(temp);
-    for(const p of body.parts){
+    transformParts(body.parts,body.palm);
+  }
+  function transformParts(parts,foldLeaves=false){
+    for(const p of parts){
       local.multiplyMatrices(p.frame.inverse,pose).multiply(p.frame.world);
       if(p.bind){
         partMatrix.multiplyMatrices(local,p.bind);p.mesh.setMatrixAt(p.index,partMatrix);
@@ -132,6 +139,10 @@ export function createDestruction(scene,blocks,groundHeight){
         if(p.normals)normalMatrix.getNormalMatrix(local);
         for(let j=0;j<p.vertexCount;j++){
           temp.fromArray(p.coords,j*3).applyMatrix4(local);
+          if(foldLeaves&&p.mesh.material.alphaTest>0){
+            const floor=groundHeight(temp.x,temp.z)+.055;
+            if(temp.y<floor)temp.y=floor;
+          }
           position.setXYZ(p.firstVertex+j,temp.x,temp.y,temp.z);
           if(p.normals){
             temp.fromArray(p.normals,j*3).applyNormalMatrix(normalMatrix);
@@ -155,6 +166,16 @@ export function createDestruction(scene,blocks,groundHeight){
   }
 
   function stepBody(b,dt){
+    if(b.palm){
+      b.rate+=dt*15/b.length*Math.sin(Math.max(.12,b.angle));
+      b.angle+=b.rate*dt;
+      if(b.angle>b.stop){
+        b.angle=b.stop;
+        b.rate=b.rate>.20?-b.rate*.14:0;
+      }
+      b.rotation.setFromAxisAngle(b.axis,b.angle);
+      return b.angle===b.stop&&b.rate===0;
+    }
     b.age+=dt;b.velocity.y-=12.4*dt;
     b.center.addScaledVector(b.velocity,dt);
     const rate=b.omega.length();
@@ -179,21 +200,75 @@ export function createDestruction(scene,blocks,groundHeight){
     return b.rest>.18||b.age>5;
   }
 
+  function fallingPalm(block,parts,dx,dz,speed){
+    const h=block.breakable,pivot=v().fromArray(h.hinge),axis=v().set(dz,0,-dx);
+    const spine=h.spine.map(p=>v().fromArray(p).sub(pivot));
+    // The first point of the leaning trunk that touches terrain arrests the
+    // hinge. The flexible leaf tips flatten against the ground independently.
+    let lo=0,hi=2.12;
+    for(let i=0;i<12;i++){
+      const angle=(lo+hi)/2;
+      const penetrates=spine.some(p=>{
+        temp.copy(p).applyAxisAngle(axis,angle).add(pivot);
+        return temp.y<groundHeight(temp.x,temp.z)+.17;
+      });
+      if(penetrates)hi=angle;else lo=angle;
+    }
+    return {palm:true,parts,pivot,center:pivot.clone(),axis,angle:0,stop:lo,
+      length:spine.at(-1).length(),rate:T.MathUtils.clamp(speed*.1,.5,1.55),rotation:new T.Quaternion()};
+  }
+  function hitStructure(b,speed,dx,dz,x,z){
+    const h=b.breakable;
+    if(speed<7)return false;
+    let s=structural.get(b);
+    if(!s){s={damage:0,last:-Infinity,elapsed:0};structural.set(b,s);}
+    if(s.parts||time-s.last<.23)return false;
+    s.last=time;s.damage+=speed-4;ruins.mark(b,x,z);
+    if(s.damage<22+Math.min(60,h.height*1.12))return false;
+    h.falling=true;s.parts=h.parts.map(p=>capture(p,frames));changed.set(h,s.parts);
+    s.roof=h.height;
+    for(const part of s.parts){
+      for(const p of part.samples)s.roof=Math.max(s.roof,p.y);
+      delete part.samples;
+    }
+    const len=Math.hypot(dx,dz)||1;
+    s.axis=v().set(dz/len,0,-dx/len);if(!s.axis.lengthSq())s.axis.set(1,0,0);
+    s.site=ruins.begin(b);
+    onEffect('collapse');
+    return false; // Standing floors still obstruct the vehicle until they clear.
+  }
+  function collapse(b,s,dt){
+    s.elapsed+=dt;
+    const t=Math.min(1,s.elapsed/(1.12+Math.sqrt(b.breakable.height)*.12));
+    const drop=t*t;
+    spin.setFromAxisAngle(s.axis,Math.min(.21,.31*Math.min(b.w,b.d)/s.roof)*Math.sin(Math.PI*t));
+    temp.set(b.x,0,b.z).applyQuaternion(spin).negate();
+    temp.x+=b.x;temp.z+=b.z;temp.y-=(s.roof+3)*drop;
+    pose.makeRotationFromQuaternion(spin).setPosition(temp);transformParts(s.parts);
+    ruins.animate(s.site,b,t);
+    if(t===1){b.breakable.broken=true;b.breakable.rubble.broken=false;}
+  }
   function hit(block,impactSpeed,vx,vz,x,z){
     const h=block?.breakable;
     if(!h)return false;
     if(h.broken)return true;
+    if(h.kind==='building')return hitStructure(block,impactSpeed,vx,vz,x,z);
     if(!h.parts.length||!(impactSpeed>=(resistance[h.kind]??5)))return false;
     const parts=h.parts.map(p=>capture(p,frames));
     h.broken=true;changed.set(h,parts);
+    if(h.hinge)onEffect('timber');
     const horizontal=Math.hypot(vx,vz);
     const dx=horizontal>1e-5?vx/horizontal:0,dz=horizontal>1e-5?vz/horizontal:-1;
     const speed=T.MathUtils.clamp(impactSpeed*.39,1.3,9.2);
     for(const [i,group] of splitPieces(h.kind,parts).entries()){
       if(active.length>=MAX_MOVING){
-        const old=active.shift();old.center.y+=contactDepth(old);draw(old);
+        const old=active.shift();
+        if(old.palm)old.rotation.setFromAxisAngle(old.axis,old.stop);
+        else old.center.y+=contactDepth(old);
+        draw(old);
       }
-      const body=makeBody(group,dx,dz,speed,x,z,i*2.73+block.x*.29+block.z*.17);
+      const body=h.hinge?fallingPalm(block,group,dx,dz,impactSpeed):
+        makeBody(group,dx,dz,speed,x,z,i*2.73+block.x*.29+block.z*.17);
       active.push(body);
     }
     for(const p of parts)delete p.samples;
@@ -228,7 +303,8 @@ export function createDestruction(scene,blocks,groundHeight){
     for(const t of targets){
       if(t.b.breakable.broken)continue;
       const impulse=mode==='FISTS'?2.9:(power?18:12)*(1-.25*t.d/range);
-      if(hit(t.b,impulse,t.ux*impulse,t.uz*impulse,t.nx,t.nz))count++;
+      const previous=structural.get(t.b)?.damage??0;
+      if(hit(t.b,impulse,t.ux*impulse,t.uz*impulse,t.nx,t.nz)||(structural.get(t.b)?.damage??0)>previous)count++;
       if(mode!=='NOVA')break;
     }
     return count;
@@ -236,7 +312,10 @@ export function createDestruction(scene,blocks,groundHeight){
 
   return {hit,strike,
     update(dt){
-      if(!(dt>0)||!active.length)return;
+      if(!(dt>0))return;
+      time+=dt;
+      for(const [b,s] of structural)if(s.parts&&!b.breakable.broken)collapse(b,s,dt);
+      if(!active.length)return;
       const duration=Math.min(dt,.12),steps=Math.ceil(duration/(1/60));
       for(let n=active.length-1;n>=0;n--){
         const body=active[n];let done=false;
@@ -251,6 +330,8 @@ export function createDestruction(scene,blocks,groundHeight){
         handle.broken=false;
       }
       changed.clear();
+      for(const b of structural.keys()){b.breakable.rubble.broken=true;b.breakable.falling=false;}
+      structural.clear();ruins.reset();time=0;
     }
   };
 }

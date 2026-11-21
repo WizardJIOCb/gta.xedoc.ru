@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createGait } from './gait.js';
 import { createBodywork } from './bodywork.js';
+import { paintWear,fittingDamage } from './carDamage.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
@@ -216,6 +217,7 @@ function windshield(mesh, paint, bright, detail) {
   detail.line(0x242829,rows.map(r=>r[0]),.019);
   detail.rod(0x27292c,[0,1.247,-.217],[0,1.196,-.172],.009);
   detail.ball(0x333337,[0,1.174,-.156],[.094,.029,.024]);
+  return (u,t)=>[u*(.79-.12*t),.852+.012*u*u+t*(.403-.050*u*u),-.638+.08*u*u+t*(.40-.005*u*u)];
 }
 
 function interior(detail, bright) {
@@ -404,6 +406,8 @@ function trafficCabin(p,trim,metal,variant){
     }
     p.ball(0xffffff,[s*.96,.89,-.53],[.095,.045,.071]);
   }
+  return (u,t)=>[u*(.77+(.625-.77)*t),sill+(height-.035-sill)*t+.025-.054*u*u,
+    nose+(roofStart-nose)*t-.012];
 }
 
 let trafficIndex=0;
@@ -413,12 +417,12 @@ export function createCar({hero=false,color=0xd46e48}={}) {
   for(const s of [-1,1]) p.add(halfHull(s));
   trim.box(0x25252a,[0,.31,0],[1.64,.19,3.91]);
   rearAndNose(p,trim,metal,lamps,brakes,hero);
-  let occupant=null,plate=null;
+  let occupant=null,plate=null,screenPoint;
   if(hero){
-    windshield(body,p,metal,trim);interior(trim,metal);doorsAndHood(p,trim,metal);
+    screenPoint=windshield(body,p,metal,trim);interior(trim,metal);doorsAndHood(p,trim,metal);
     occupant=driver(body);plate=licensePlate(body);
   } else {
-    trafficCabin(p,trim,metal,trafficIndex++%3);
+    screenPoint=trafficCabin(p,trim,metal,trafficIndex++%3);
   }
   const paint=new THREE.MeshPhysicalMaterial({color,vertexColors:true,metalness:.56,roughness:.285,
     clearcoat:hero?.92:.55,clearcoatRoughness:.14,side:THREE.DoubleSide});
@@ -426,6 +430,8 @@ export function createCar({hero=false,color=0xd46e48}={}) {
   if(plate)panels.push(plate);
   const brakeMaterial=new THREE.MeshBasicMaterial({vertexColors:true,color:0xa56155,toneMapped:false});
   panels.push(brakes.mesh(brakeMaterial,body));shadow(mesh);
+  paintWear(panels[0]);
+  const fittings=fittingDamage(body,panels[3],panels.at(-1),screenPoint);
   const bodywork=createBodywork(panels);
   const wheels=new THREE.InstancedMesh(makeWheel(hero),detailMaterial,4);
   wheels.name='Road wheels';wheels.castShadow=true;mesh.add(wheels);
@@ -458,6 +464,7 @@ export function createCar({hero=false,color=0xd46e48}={}) {
     mesh, setDriverVisible(visible){if(occupant)occupant.visible=visible;},
     dent(contact){
       bodywork.dent(contact);
+      fittings.hit(contact);
       let i=0;
       for(const z of axles)for(const side of [-1,1]){
         const reach=Math.hypot((side*.90-contact.side)*1.4,z+contact.front);
@@ -466,7 +473,9 @@ export function createCar({hero=false,color=0xd46e48}={}) {
       placeWheels(lastSteer);
     },
     get steeringBias(){return .042*(corners[0]-corners[1]);},
-    restore(){bodywork.restore();corners.fill(0);placeWheels(lastSteer);},
+    headlightStrength(side){return fittings.condition[side];},
+    setNight(value){paint.envMapIntensity=value?.30:1.05;},
+    restore(){bodywork.restore();fittings.restore();corners.fill(0);placeWheels(lastSteer);},
     setSuspension(pitch,roll){body.rotation.x=pitch;body.rotation.z=roll;},
     renderWheels(alpha){
       if(previousFront!==frontRoll || previousRear!==rearRoll || previousSteer!==lastSteer)

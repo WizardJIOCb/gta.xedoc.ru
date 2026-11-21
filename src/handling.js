@@ -79,11 +79,23 @@ function moveChassis(v,dt,hitTest,onImpact,breakProp) {
     const dz=v.vz-v.yawRate*rx-hit.vz-(other?other.vz-other.yawRate*bx:0);
     const closing=-(dx*nx+dz*nz);
     if(closing>0){
+      function contact(h,x,z,sign,speed=closing){
+        const s=Math.sin(h),c=Math.cos(h);
+        return {front:-x*s-z*c,side:x*c-z*s,speed,
+          inwardX:sign*(nx*c-nz*s),inwardZ:sign*(nx*s+nz*c)};
+      }
+      function dentPlayer(speed){
+        const damage=Math.min(100-v.damage,Math.max(1,Math.round((speed-2)*1.65)));
+        v.damage+=damage;v.impactDelay=.45;
+        onImpact(damage,contact(yaw,rx,rz,1,speed));
+      }
       if(hit.block?.breakable && breakProp?.(hit.block,closing,v.vx,v.vz,x+rx,z+rz)){
         // The fixture gives way. Take a small normal impulse and solve the
         // same pose again in case a separate solid object is behind it.
-        const resistance=Math.min(2.1,closing*.13);
+        const heavy=['palm','tree','container','trailer','fountain'].includes(hit.block.breakable.kind);
+        const resistance=heavy?Math.min(6,closing*.38):Math.min(2.1,closing*.13);
         v.vx+=nx*resistance;v.vz+=nz*resistance;
+        if(heavy&&!v.impactDelay)dentPlayer(closing*.74);
         continue;
       }
       const arm=rz*nx-rx*nz;
@@ -100,14 +112,7 @@ function moveChassis(v,dt,hitTest,onImpact,breakProp) {
       v.yawRate=clamp(v.yawRate+(arm*impulse+tarm*tangent)/YAW_INERTIA,-2.6,2.6);
       if(other)other.kick(-ix,-iz,bx,bz);
       if(closing>2.5 && !v.impactDelay){
-        const damage=Math.min(100-v.damage,Math.max(1,Math.round((closing-2)*1.65)));
-        v.damage+=damage;v.impactDelay=.45;
-        function contact(h,x,z,sign){
-          const s=Math.sin(h),c=Math.cos(h);
-          return {front:-x*s-z*c,side:x*c-z*s,speed:closing,
-            inwardX:sign*(nx*c-nz*s),inwardZ:sign*(nx*s+nz*c)};
-        }
-        onImpact(damage,contact(yaw,rx,rz,1));
+        dentPlayer(closing);
         if(hit.target){
           const mesh=hit.target.model.mesh;
           hit.target.model.dent(contact(mesh.rotation.y,x+rx-mesh.position.x,z+rz-mesh.position.z,-1));

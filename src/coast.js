@@ -32,9 +32,11 @@ export function addWetRoad(scene) {
         float depth=smoothstep(.45,.63,pools-.08*min(gutter,2.2));
         if(depth<.01) discard;
         vec2 uv=proj.xy/proj.w;
-        float grain=noise(st*24.)-.5;
-        uv+=vec2(grain*.0014,grain*.0019);
-        vec3 reflected=texture2D(tDiffuse,uv).rgb;
+        float nearDetail=1.-smoothstep(.015,.16,length(fwidth(st)));
+        float grain=(noise(st*24.)-.5)*nearDetail;
+        uv+=vec2(grain*.0009,grain*.0014);
+        vec2 blur=vec2(.0017,.0028)*(1.15-depth);
+        vec3 reflected=.50*texture2D(tDiffuse,uv).rgb+.25*texture2D(tDiffuse,uv+blur).rgb+.25*texture2D(tDiffuse,uv-blur).rgb;
         float angle=1.-normalize(cameraPosition-wp).y;
         gl_FragColor=vec4(reflected*vec3(.78,.85,.86),depth*(.14+.49*pow(clamp(angle,0.,1.),2.6)));
         #include <tonemapping_fragment>

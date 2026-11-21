@@ -24,6 +24,8 @@ export function createBodywork(panels){
         const falloff=Math.exp(-1.55*across*across-inside*inside-y*y/.115);
         if(falloff<.006)continue;
         const w=depth*falloff;
+        const wear=g.attributes.wear;
+        if(wear)wear.setX(i,Math.min(1,wear.getX(i)+w*(1.8+Math.abs(across)*1.2)));
         // A compressed hood or trunk buckles upwards behind the contact patch.
         const fold=.15+.45*Math.sin(inside*3.6)*Math.abs(dz);
         const a=position.array;
@@ -39,7 +41,7 @@ export function createBodywork(panels){
         const xx=nx-n*gx,yy=ny-n*gy,zz=nz-n*gz,l=Math.hypot(xx,yy,zz)||1;
         normal.setXYZ(i,xx/l,yy/l,zz/l);changed=true;
       }
-      if(changed){position.needsUpdate=true;normal.needsUpdate=true;g.computeBoundingSphere();}
+      if(changed){position.needsUpdate=true;normal.needsUpdate=true;if(g.attributes.wear)g.attributes.wear.needsUpdate=true;g.computeBoundingSphere();}
     });
   }
   function restore(){
@@ -47,6 +49,7 @@ export function createBodywork(panels){
     panels.forEach(({geometry:g},i)=>{
       const {position,normal}=g.attributes;
       position.array.set(original[i].positions);normal.array.set(original[i].normals);
+      if(g.attributes.wear){g.attributes.wear.array.fill(0);g.attributes.wear.needsUpdate=true;}
       position.needsUpdate=true;normal.needsUpdate=true;g.computeBoundingSphere();
     });
     original=null;

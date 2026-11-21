@@ -25,7 +25,11 @@ test('opposite corner collisions dent both cars locally and repair restores the 
     assert.ok(peaks[1]>.10 && peaks[1]>peaks[0]*1.5);
     assert.ok(Math.sign(car.steeringBias)===side);
     assert.ok(other.attributes.position.array.some((x,i)=>Math.abs(x-parkedBefore[i])>.04));
+    assert.ok(geo.attributes.wear.array.some(w=>w>.10));
+    const struck=side>0?0:1;
+    assert.ok(car.headlightStrength(struck)<car.headlightStrength(1-struck));
     car.restore();parked.restore();
+    assert.equal(car.headlightStrength(struck),1);assert.ok(geo.attributes.wear.array.every(w=>w===0));
     assert.deepEqual(now,before);assert.deepEqual(geo.attributes.normal.array,normal);
     assert.deepEqual(other.attributes.position.array,parkedBefore);assert.equal(car.steeringBias,0);
   }
