@@ -159,8 +159,18 @@ function canopyTexture(canvasTexture,rnd){
 function vegetate(b,m,rnd,blocks,tools){
   function scannedAtlas(name) {
     const map=new T.TextureLoader().load('/world/'+name+'-atlas.webp');
+    // The atlas already contains the shading of the scanned branches. Lift its
+    // shadows before applying the in-game sun, especially on the backlit coast.
     map.colorSpace=T.SRGBColorSpace;map.anisotropy=8;
     const mat=new T.MeshLambertMaterial({map,side:T.DoubleSide,alphaTest:.29,vertexColors:true});
+    mat.onBeforeCompile=shader=>{
+      shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',
+        '#include <map_fragment>\n diffuseColor.rgb = pow(diffuseColor.rgb, vec3(0.60)) * vec3(0.80, 1.22, 0.93);')
+        .replace('#include <lights_fragment_end>',`#include <lights_fragment_end>
+          #if NUM_DIR_LIGHTS > 0
+            reflectedLight.indirectDiffuse += diffuseColor.rgb * (0.15 * directionalLights[0].color.r);
+          #endif`);
+    };
     mat.userData.casts=true;
     return mat;
   }
