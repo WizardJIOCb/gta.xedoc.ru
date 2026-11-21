@@ -151,9 +151,36 @@ function signAtlas() {
   });
 }
 
+// Store the top faces the level builder marks as walkable. Queries share the
+// coordinates used to render each surface, including overlapping curb lips.
+class GroundField {
+  constructor(){this.cells=new Map();}
+  add(x0,z0,x1,z1,top,circle=null) {
+    const patch={x0,z0,x1,z1,top,circle};
+    for(let ix=Math.floor(x0/16);ix<=Math.floor(x1/16);ix++){
+      for(let iz=Math.floor(z0/16);iz<=Math.floor(z1/16);iz++){
+        const key=ix+','+iz;
+        if(!this.cells.has(key))this.cells.set(key,[]);
+        this.cells.get(key).push(patch);
+      }
+    }
+  }
+  height(x,z) {
+    let y=0;
+    const patches=this.cells.get(Math.floor(x/16)+','+Math.floor(z/16));
+    if(!patches)return y;
+    for(const p of patches) {
+      if(p.top<=y || x<p.x0 || x>p.x1 || z<p.z0 || z>p.z1)continue;
+      if(p.circle && (x-p.circle.x)**2+(z-p.circle.z)**2>p.circle.r2)continue;
+      y=p.top;
+    }
+    return y;
+  }
+}
+
 class StaticWorld {
-  constructor(scene) {
-    this.scene=scene;this.geometry=new Map();this.batches=new Map();this.surfaces=new Map();
+  constructor(scene,floor=null) {
+    this.scene=scene;this.floor=floor;this.geometry=new Map();this.batches=new Map();this.surfaces=new Map();
     this.dummy=new THREE.Object3D();this.col=new THREE.Color();
   }
   instance(type, mat, xyz, size, color, rot=[0,0,0], quaternion=null) {
@@ -164,6 +191,14 @@ class StaticWorld {
     this.dummy.updateMatrix();this.batches.get(key).list.push([this.dummy.matrix.clone(),color]);
   }
   box(mat,x,y,z,w,h,d,color,rot=0) {this.instance('box',mat,[x,y,z],[w,h,d],color,[0,rot,0]);}
+  walkableBox(mat,x,y,z,w,h,d,color) {
+    this.box(mat,x,y,z,w,h,d,color);
+    this.floor.add(x-w/2,z-d/2,x+w/2,z+d/2,y+h/2);
+  }
+  walkableDisc(mat,x,y,z,r,h,color) {
+    this.instance('disc',mat,[x,y,z],[r,h,r],color);
+    this.floor.add(x-r,z-r,x+r,z+r,y+h/2,{x,z,r2:r*r});
+  }
   rod(mat,a,b,r,color,type='rod') {
     const start=new THREE.Vector3(...a),end=new THREE.Vector3(...b),dir=end.clone().sub(start);
     if(dir.lengthSq()<.000001)return;
@@ -199,6 +234,7 @@ class StaticWorld {
 function ground(b,mat,x0,z0,x1,z1,y,tile=1,color='#ffffff') {
   b.quad(mat,[[x0,y,z1],[x1,y,z1],[x1,y,z0],[x0,y,z0]],
     [[x0/tile,-z1/tile],[x1/tile,-z1/tile],[x1/tile,-z0/tile],[x0/tile,-z0/tile]],color);
+  b.floor.add(x0,z0,x1,z1,y);
 }
 
 function atlasUV(i,cols,rows) {
@@ -531,13 +567,13 @@ function streets(b,m,rnd) {
   }
   for(const avenue of AVENUES.slice(0,-1)) for(const cross of CROSS_STREETS.slice(0,-1)){
     const x=avenue+32,z=cross+32;
-    b.box(m.stone,x,.07,z,49.4,.15,49.4,'#a39e92');
+    b.walkableBox(m.stone,x,.07,z,49.4,.15,49.4,'#a39e92');
     ground(b,m.pavement,x-24.72,z-24.72,x+24.72,z+24.72,.154,2.4);
   }
   for(let i=0;i<CROSS_STREETS.length-1;i++){
     const z=(CROSS_STREETS[i]+CROSS_STREETS[i+1])*.5;
     for(const x of [-7.65,7.65]){
-      b.box(m.stone,x,.083,z,.20,.164,48.5,'#c9bda7');
+      b.walkableBox(m.stone,x,.083,z,.20,.164,48.5,'#c9bda7');
       if(x>0)ground(b,m.pavement,x-.07,z-24.2,17.1,z+24.2,.15,2.4);
     }
   }
@@ -545,10 +581,10 @@ function streets(b,m,rnd) {
   for(let z=BOUNDS.minZ;z<=BOUNDS.maxZ;z+=14.5){
     if(CROSS_STREETS.some(c=>Math.abs(c-z)<9))continue;
     for(let x of [-6.7,6.7]){
-      b.box(m.chrome,x,.026,z,.42,.026,.94,'#514f4b');
-      for(let j=0;j<6;j++) b.box(m.chrome,x,.043,z-.32+j*.12,.32,.009,.035,'#272d2b');
+      b.walkableBox(m.chrome,x,.026,z,.42,.026,.94,'#514f4b');
+      for(let j=0;j<6;j++) b.walkableBox(m.chrome,x,.043,z-.32+j*.12,.32,.009,.035,'#272d2b');
     }
-    if(rnd()>.54)b.instance('disc',m.chrome,[2.2,.015,z+1],[.31,.027,.31],'#53524c');
+    if(rnd()>.54)b.walkableDisc(m.chrome,2.2,.015,z+1,.31,.027,'#53524c');
   }
 }
 
@@ -595,18 +631,18 @@ function boardwalk(b,m,rnd,blocks) {
   for(let z of [-207,-76,55]){
     const x=30,deckY=2.16;
     for(let dx of [-1.4,1.4])for(let dz of [-1.1,1.1])b.rod(m.stone,[x+dx,.1,z+dz],[x+dx,deckY,z+dz],.106,'#a88c70');
-    b.box(m.stone,x,deckY,z,4.25,.22,3.4,'#d9bf94');
+    b.walkableBox(m.stone,x,deckY,z,4.25,.22,3.4,'#d9bf94');
     b.box(m.stone,x,deckY+1.0,z,2.85,1.8,2.3,'#a7cdc1');
     for(let j of [-1,0,1])b.box(m.glass,x-1.44,deckY+1.28,z+j*.69,.04,.60,.56,'#628e93');
     b.box(m.stone,x,deckY+2.04,z,3.71,.22,2.97,'#ce8876');
-    for(let step=0;step<7;step++)b.box(m.stone,x-1.25-step*.28,deckY-step*.26,z,.40,.11,.82,'#c9aa85');
+    for(let step=0;step<7;step++)b.walkableBox(m.stone,x-1.25-step*.28,deckY-step*.26,z,.40,.11,.82,'#c9aa85');
     b.rod(m.chrome,[x+1.36,deckY,z],[x+1.36,5.9,z],.032,'#a7a39b');
     b.quad(m.fabric,[[x+1.36,5.8,z],[x+1.36,5.8,z+.95],[x+1.36,5.47,z+.77],[x+1.36,5.38,z]],undefined,'#d9705e');
     blocks.push({x,z,w:4.2,d:3.3});
   }
   // Pier garage: the apron west of the hangar is clear across the target.
   ground(b,m.asphalt,6,-166.9,46,-153.1,.16,4.2);
-  for(let x=18;x<46;x+=2.4)for(let side of [-1,1])b.box(m.stone,x,.28,-160+side*6.9,2.26,.45,.31,'#cfc5a6');
+  for(let x=18;x<46;x+=2.4)for(let side of [-1,1])b.walkableBox(m.stone,x,.28,-160+side*6.9,2.26,.45,.31,'#cfc5a6');
   const gx=50,gz=-160;
   b.box(m.stone,gx,2.13,gz,9.6,4.0,12.9,'#dcd1b7');
   blocks.push({x:gx,z:gz,w:9.6,d:12.9});
@@ -620,7 +656,7 @@ function boardwalk(b,m,rnd,blocks) {
   northFace(b,m.sign,gx,2.60,gz+6.48,7.6,1.45,12,4,false);
   northFace(b,m.sign,gx,2.60,gz-6.48,7.6,1.45,12,4,true);
   for(let x=52;x<94;x+=3.18) {
-    b.box(m.stone,x,.37,gz,3.12,.58,4.8,'#ad977b');
+    b.walkableBox(m.stone,x,.37,gz,3.12,.58,4.8,'#ad977b');
     for(const dz of [-2.28,2.28]){
       b.box(m.stone,x,.9,gz+dz,.13,1.65,.13,'#907e68');
       b.box(m.stone,x,1.51,gz+dz,3.23,.12,.12,'#c2ac8e');
@@ -689,10 +725,10 @@ function addStreetDetails(b,m,rnd,blocks) {
     for(const side of [-1,1]) {
       for(let j=0;j<3;j++){
         const zz=mid+(j-1)*16.8+(rnd()-.5)*2,x=side*(side<0?8.8:9.45);
-        b.instance('disc',m.stone,[x,.167,zz],[.66,.03,.66],'#807c6c');
+        b.walkableDisc(m.stone,x,.167,zz,.66,.03,'#807c6c');
         for(let bar=0;bar<9;bar++){
           const off=(bar-4)*.12,length=2*Math.sqrt(.64*.64-off*off);
-          b.box(m.chrome,x+off,.191,zz,.037,.026,length,'#64675e');
+          b.walkableBox(m.chrome,x+off,.191,zz,.037,.026,length,'#64675e');
         }
         palm(b,m,rnd,x,zz,6.6+rnd()*2.6,rnd()*6.28);
         blocks.push({x,z:zz,w:.6,d:.6});
@@ -706,7 +742,7 @@ function addStreetDetails(b,m,rnd,blocks) {
       }
       if(side<0) {
         const xx=-11.4,zz=mid+1;
-        b.box(m.stone,xx,.46,zz,1.35,.57,2.49,'#baa58d');
+        b.walkableBox(m.stone,xx,.46,zz,1.35,.57,2.49,'#baa58d');
         shrub(b,m,rnd,xx,zz,.92);
       }
     }
@@ -854,9 +890,9 @@ function portBlock(b,m,rnd,blocks,x,z,gantry) {
 function marinaSlips(b,m,rnd) {
   // Finger piers and moored boats sit past the swash line.
   for(let z=-400;z<-228;z+=32){
-    b.box(m.stone,60,.45,z,26,.60,2.1,'#a78564');
-    b.box(m.stone,72.4,.45,z+6.4,1.45,.60,14.5,'#c29b74');
-    for(let k=0;k<11;k++)b.box(m.stone,47.7+k*2.38,.77,z,.065,.035,2.02,'#795f4b');
+    b.walkableBox(m.stone,60,.45,z,26,.60,2.1,'#a78564');
+    b.walkableBox(m.stone,72.4,.45,z+6.4,1.45,.60,14.5,'#c29b74');
+    for(let k=0;k<11;k++)b.walkableBox(m.stone,47.7+k*2.38,.77,z,.065,.035,2.02,'#795f4b');
     for(let xx of [48,60,72])b.rod(m.stone,[xx,-.2,z+1.1],[xx,1.39,z+1.1],.14,'#826c58');
     const bx=67,bz=z+8;
     b.instance('oval',m.stone,[bx,.46,bz],[2.23,.77,5.37],'#eaeadf');
@@ -875,7 +911,7 @@ function coastalWheel(scene,b,m,blocks) {
     b.rod(m.stone,[x+side*4.45,.19,z+dir*7],[x+side*1.9,hub,z],.27,'#aad4cb');
     b.rod(m.chrome,[x+side*4.45,.19,z+dir*7],[x+side*3.4,6.2,z-dir*4.05],.13,'#e7b48c');
   }
-  b.box(m.stone,x,.34,z,10,.57,16,'#c29678');
+  b.walkableBox(m.stone,x,.34,z,10,.57,16,'#c29678');
   blocks.push({x,z,w:10,d:16});
   b.rod(m.chrome,[x-2.8,hub,z],[x+2.8,hub,z],.27,'#c4c8b6');
   const wheel=new THREE.Group();scene.add(wheel);wheel.position.set(x,hub,z);
@@ -915,7 +951,7 @@ function coastalWheel(scene,b,m,blocks) {
 }
 
 export function createWorld(scene) {
-  const b=new StaticWorld(scene),m=makeMaterials(),rnd=randomGenerator(54634),blocks=[];
+  const floor=new GroundField(),b=new StaticWorld(scene,floor),m=makeMaterials(),rnd=randomGenerator(54634),blocks=[];
   streets(b,m,rnd);
   boardwalk(b,m,rnd,blocks);
   marinaSlips(b,m,rnd);
@@ -949,7 +985,7 @@ export function createWorld(scene) {
   addStreetDetails(b,m,rnd,blocks);
   sidewalkLife(b,m,rnd);
   for(const startZ of CROSS_STREETS.slice(0,-1)){
-    const newBlocks=new StaticWorld(scene);
+    const newBlocks=new StaticWorld(scene,floor);
     for(const west of AVENUES.slice(0,-1)){
       const x=west+32,z=startZ+32;
       if(ORIGINAL_ROWS.includes(z)&&x>-128)continue;
@@ -966,7 +1002,7 @@ export function createWorld(scene) {
   }
   b.finish();
   const waterTime=ocean(scene);
-  return {blocks,update(dt,time){
+  return {blocks,groundHeight:(x,z)=>floor.height(x,z),update(dt,time){
     waterTime.value=Number.isFinite(time)?time:waterTime.value+dt;
     m.leaf.userData.breeze.value=waterTime.value;
     spinWheel(waterTime.value);
@@ -1028,7 +1064,7 @@ function sidewalkLife(b,m,rnd) {
       const z=center+(group-1)*15+.9;
       // Plant islands on promenade are continuously staggered with maintained walking gaps.
       const px=13.35+(group%2)*1.85;
-      b.box(m.stone,px,.225,z,2.3,.25,5.2,'#b2ac97');
+      b.walkableBox(m.stone,px,.225,z,2.3,.25,5.2,'#b2ac97');
       ground(b,m.flat,px-1.09,z-2.50,px+1.09,z+2.50,.358,1,'#716b4e');
       for(const [n,dd] of [-1.82,-.68,.56,1.78].entries()){
         const sx=px+(rnd()-.5)*.84,scale=.73+rnd()*.45;
