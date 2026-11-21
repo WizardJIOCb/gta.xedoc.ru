@@ -1,3 +1,4 @@
+import {CITY_BOUNDS,isRegionalRoad} from './map.js';
 const clamp = (x,min,max) => Math.max(min,Math.min(max,x));
 export function resetVehicle(v) {
   Object.assign(v,{x:5.4,z:66,yaw:0,speed:0,steer:0,vx:0,vz:0,damage:0,impactDelay:0});
@@ -6,17 +7,17 @@ export function resetVehicle(v) {
 // the rear axle to slip under the handbrake and regain grip progressively.
 export function drive(v, input, dt, hitTest, onImpact) {
   const handbrake=input.handbrake, abs=Math.abs(v.speed);
-  const sand=v.x>18 && Math.abs(v.z+160)>7;
+  const sand=v.z>CITY_BOUNDS.maxZ?!isRegionalRoad(v.x,v.z):v.x>18 && Math.abs(v.z+160)>7;
   const steerTarget=input.turn*(0.56/(1+abs*0.037));
   v.steer+=(steerTarget-v.steer)*(1-Math.exp(-6.5*dt));
   let acceleration=0;
-  if (input.gas) acceleration+=v.speed < -0.3 ? 17 : 9.3/(1+abs*0.033);
+  if (input.gas) acceleration+=v.speed < -0.3 ? 17 : (input.nitro?22:9.3)/(1+abs*0.033);
   if (input.brake) acceleration-=v.speed > 0.3 ? 17.5 : 4.8;
   if (Math.abs(acceleration)<0.01 || handbrake || sand) {
     const resistance=1.1+(handbrake?8.2:0)+(sand?4.0:0);
     v.speed=Math.sign(v.speed)*Math.max(0,abs-resistance*dt);
   }
-  v.speed=clamp(v.speed+(acceleration-0.0048*v.speed*Math.abs(v.speed))*dt,-7,sand?13:34);
+  v.speed=clamp(v.speed+(acceleration-(input.nitro?.002:.0048)*v.speed*Math.abs(v.speed))*dt,-7,sand?13:input.nitro?54:34);
   v.yaw+=v.speed*Math.tan(v.steer)*dt/(handbrake?2.25:2.85);
   const grip=1-Math.exp(-(handbrake?2.2:sand?4.5:8.5)*dt);
   v.vx+=(-Math.sin(v.yaw)*v.speed-v.vx)*grip;

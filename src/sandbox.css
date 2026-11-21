@@ -1,0 +1,15 @@
+.pc-console{width:min(480px,92vw);max-height:85dvh;box-sizing:border-box;overflow:auto;padding:22px;border:1px solid #75b9b0;border-radius:10px;background:linear-gradient(145deg,#172e35fa,#101c23fa 75%);color:#f5eee1;box-shadow:0 18px 100px #06121bbd;font:14px/1.35 'Segoe UI',sans-serif}
+.pc-console::backdrop{background:#0b152866}
+.pc-console header,.pc-console form{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.pc-console header small{color:#9de9dc;letter-spacing:.17em;font-size:10px;font-weight:700}
+.pc-console h2{font:italic bold 31px Georgia,serif;margin:2px 0 12px}
+.pc-console button{cursor:pointer;color:inherit;border:1px solid #77908965;background:#d0f4e609;border-radius:4px}
+.pc-console header button{font-size:24px;width:34px;align-self:flex-start}
+.pc-codes{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.pc-codes button{padding:6px;text-align:left}.pc-codes b,.pc-codes span{display:block}
+.pc-codes b{font:600 12px Consolas,monospace;color:#a3efdb}.pc-codes span{font-size:10px;color:#d6dcd5}
+.pc-codes button:hover,.pc-console button:focus-visible{background:#35524f}
+.pc-console pre{min-height:1.35em;max-height:80px;overflow:auto;white-space:pre-wrap;color:#fbc2a2;font:12px/1.5 Consolas,monospace}
+.pc-console form{border-top:1px solid #677c7b;padding-top:10px;color:#9ae9d5}
+.pc-console input{font:16px Consolas,monospace;min-width:0;flex:1;color:#e1fffa;background:transparent;border:0;outline:none}
+.pc-console form button{padding:6px 9px}

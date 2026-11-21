@@ -1,3 +1,5 @@
+import {CITY_BOUNDS,isRegionalRoad} from './map.js';
+
 const STATIONS = [
   { name: '98.6 Sundown FM', file: 'sundown.m4a' },
   { name: '104.2 Radio Brisa', file: 'brisa.m4a' },
@@ -183,7 +185,8 @@ export function createAudio() {
   }
   function footstep(running=false, x=0, z=0) {
     stepSide *= -1;
-    const surface=x>18 && Math.abs(z+160)>7 ? 'sand' : 'foot';
+    const soft=z>CITY_BOUNDS.maxZ?!isRegionalRoad(x,z):x>18 && Math.abs(z+160)>7;
+    const surface=soft?'sand':'foot';
     playEffect(surface,running?.44:.30,stepSide*.18,(running?.92:1.0)+Math.random()*.09);
   }
   function update(speed, throttle, driving, paused, extra = {}) {

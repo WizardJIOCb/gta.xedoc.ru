@@ -1,6 +1,7 @@
 import * as T from 'three';
 import { createCar, createPerson } from './vehicles.js';
 import { createRagdoll } from './ragdoll.js';
+import { REGION_ROADS, isTraversable } from './map.js';
 
 // Offset loops keep traffic in its own lane through each rounded corner.
 function loop(points) {
@@ -9,7 +10,9 @@ function loop(points) {
     const at = new T.Vector3(x,0,z);
     function inset(j) {
       const p = points[(j + points.length) % points.length];
-      return new T.Vector3(p[0]-x,0,p[1]-z).normalize().multiplyScalar(5).add(at);
+      const offset=new T.Vector3(p[0]-x,0,p[1]-z);
+      const length=offset.length();
+      return offset.multiplyScalar(length>0?Math.min(.38,5/length):0).add(at);
     }
     return {at, enter:inset(i-1), exit:inset(i+1)};
   });
@@ -29,26 +32,34 @@ function groundHeight(x,z) {
 }
 
 export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
+  const coast=REGION_ROADS[0];
+  const circuit=coast.filter((_,i)=>i%4===0||i===coast.length-1);
+  const coastLane=circuit.map(([x,z],i)=>{
+    const a=circuit[(i+circuit.length-1)%circuit.length],b=circuit[(i+1)%circuit.length];
+    const dx=b[0]-a[0],dz=b[1]-a[1],q=Math.hypot(dx,dz);
+    return [x-2*dz/q,z+2*dx/q];
+  });
   const routes = [
     loop([[3,-163],[-67,-163],[-67,99],[3,99]]),
     loop([[-3,93],[-61,93],[-61,-221],[-3,-221]]),
     loop([[-125,-35],[-67,-35],[-67,-157],[-125,-157]]),
     loop([[-195,163],[-195,-163],[-61,-163],[-61,163]]),
-    loop([[-3,-227],[-131,-227],[-131,-419],[-3,-419]])
+    loop([[-3,-227],[-131,-227],[-131,-419],[-3,-419]]),loop(coastLane)
   ];
-  const routeOrder=[0,1,2,0,1,2,3,4,3,4];
-  const cars = [0x3c6168,0xd4bd8d,0x475565,0x9b655c,0xd3d5ca,0x857c73,0x9c563f,0x244a4d,0x635a78,0x999184].map((color,i) => {
+  const routeOrder=[0,1,2,0,1,2,3,4,3,4,5,5,5];
+  const cars = [0x3c6168,0xd4bd8d,0x475565,0x9b655c,0xd3d5ca,0x857c73,0x9c563f,0x244a4d,0x635a78,0x999184,0x317c80,0xc1a48e,0x854732].map((color,i) => {
     const model = createCar({color});
     const path = routes[routeOrder[i]], length = path.getLength();
     scene.add(model.mesh);
-    const initialOffset=[.66,.94,.5,.30,.68,.92,.21,.23,.71,.77][i]*length;
+    const initialOffset=[.66,.94,.5,.30,.68,.92,.21,.23,.71,.77,.15,.49,.80][i]*length;
     const pace=6.4+i*.39;
     return {model,path,length,initialOffset,offset:initialOffset,pace,speed:pace,steer:0};
   });
   const pedestrians = [
     [-9.6,78,-1],[11.7,70,1],[-10.3,46,1],[11.2,1,-1],
     [-10.7,-67,-1],[12.2,-102,1],[-10,-137,1],[13,-194,1],[10.9,58,-1],
-    [11.8,-318,1],[-10.6,-370,-1],[-181.2,2,-1],[-201.3,73,1],[-246.7,123,-1],[-73.4,-318,1]
+    [11.8,-318,1],[-10.6,-370,-1],[-181.2,2,-1],[-201.3,73,1],[-246.7,123,-1],[-73.4,-318,1],
+    [158,405,-1],[168,422,1],[-205,452,1],[-74,587,-1],[-97,588,1]
   ].map(([x,z,dir],i) => {
     const model = createPerson({color:[0xc88861,0x1c6577,0xd6c8a2,0xa75d63,0x7a9488][i%5]});
     model.mesh.position.set(x,0.16,z);
@@ -130,7 +141,7 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
       ped.speed=T.MathUtils.damp(ped.speed,target,4.2,dt);
       const nx=T.MathUtils.damp(obj.position.x,ped.anchorX,.75,dt)-Math.sin(obj.rotation.y)*ped.speed*dt;
       const nz=obj.position.z-Math.cos(obj.rotation.y)*ped.speed*dt;
-      if(blocks.some(b=>Math.abs(nx-b.x)<b.w/2+.23 && Math.abs(nz-b.z)<b.d/2+.23)){
+      if(!isTraversable(nx,nz,.23)||blocks.some(b=>Math.abs(nx-b.x)<b.w/2+.23 && Math.abs(nz-b.z)<b.d/2+.23)){
         if(alignment>.8)ped.dir*=-1;
         ped.gaitSpeed=0;
       }else{
