@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createGait } from './gait.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
@@ -461,7 +462,7 @@ export function createPerson({color=0x458687}={}) {
   }
   mesh.scale.setScalar(.97+(index%4)*.018);
   let phase=index*1.6, amplitude=0;
-  let mixer, idle, walk, wasWalking=false;
+  let mixer, idle, walk, wasWalking=false, gait, loadedActor, loadedClips;
   const ready=loadPerson(localPeople[index%localPeople.length]).then(asset=>{
     if(!asset)return false;
     const actor=cloneSkeleton(asset.scene);
@@ -482,10 +483,26 @@ export function createPerson({color=0x458687}={}) {
     idle.setEffectiveWeight(wasWalking?0:1);walk.setEffectiveWeight(wasWalking?1:0);
     mixer.update(0);
     mesh.add(actor);mesh.remove(skeleton);
+    loadedActor=actor;loadedClips=asset.animations;
+    if(gait)gait.bind(actor,mixer,idle,walk,loadedClips);
     skeleton.traverse(part=>{if(part.isMesh)part.geometry.dispose();});
     return true;
   });
-  return {mesh,ready,update(dt,walking,walkSpeed=1.16){
+  return {mesh,ready,updateGait(dt,distance,running,airborne=false,verticalSpeed=0){
+    if(!gait){
+      gait=createGait(mesh);
+      if(loadedActor)gait.bind(loadedActor,mixer,idle,walk,loadedClips);
+    }
+    const contacts=gait.update(dt,distance,running,airborne,verticalSpeed);
+    if(!mixer){
+      const step=Math.cos(gait.phase*Math.PI*2)*gait.moveWeight*(running?.74:.45);
+      for(const {s,hip,shoulder} of limbs){
+        hip.rotation.x=airborne?s*.36:s*step;
+        shoulder.rotation.x=airborne?-s*.55:-s*step;
+      }
+    }
+    return contacts;
+  },update(dt,walking,walkSpeed=1.16){
     wasWalking=Boolean(walking);
     const gait=Math.max(.27,Math.min(1.9,walkSpeed/1.16));
     amplitude=THREE.MathUtils.damp(amplitude,walking?1:0,9,dt);

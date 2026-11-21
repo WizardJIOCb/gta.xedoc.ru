@@ -18,7 +18,7 @@ function noiseBuffer(ctx) {
 // Short sounds are rendered once. Rapid impacts reuse buffers instead of
 // allocating a new bank of envelopes and oscillators for every contact.
 function makeEffect(ctx, kind) {
-  const duration = { foot: .145, bump: .22, impact: .48, pulse: .56, gear: .105 }[kind];
+  const duration = { foot: .145, sand: .17, bump: .22, impact: .48, pulse: .56, gear: .105 }[kind];
   const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * duration), ctx.sampleRate);
   const out = buffer.getChannelData(0);
   let filtered = 0, phase = 0;
@@ -30,6 +30,10 @@ function makeEffect(ctx, kind) {
       case 'foot':
         value = .47 * Math.sin(TAU * (76 * t + .9 * (1 - Math.exp(-t * 35)))) * Math.exp(-t * 35)
           + .38 * filtered * Math.exp(-t * 29);
+        break;
+      case 'sand':
+        value = (.62 * filtered + .21 * noise) * Math.exp(-t * 21)
+          + .16 * Math.sin(TAU * 65 * t) * Math.exp(-t * 37);
         break;
       case 'bump':
         value = .74 * Math.sin(TAU * (45 * t + 1.7 * (1 - Math.exp(-t * 32)))) * Math.exp(-t * 21)
@@ -177,6 +181,11 @@ export function createAudio() {
     set(master.gain, muted || gamePaused ? 0 : .80, ctx.currentTime, .015);
     syncRadio();
   }
+  function footstep(running=false, x=0, z=0) {
+    stepSide *= -1;
+    const surface=x>18 && Math.abs(z+160)>7 ? 'sand' : 'foot';
+    playEffect(surface,running?.44:.30,stepSide*.18,(running?.92:1.0)+Math.random()*.09);
+  }
   function update(speed, throttle, driving, paused, extra = {}) {
     inCar = Boolean(driving); gamePaused = Boolean(paused);
     if (!ctx) return;
@@ -220,12 +229,11 @@ export function createAudio() {
     set(traffic.gain.gain, (.013 + .115 * pass) * outside, now, .16);
     set(traffic.filter.frequency, 235 + 410 * pass, now);
     set(traffic.panner.pan, .72 * Math.sin(now * .44), now, .20);
-    if (!inCar && extra.walking && now - lastStep > (extra.running ? .29 : .40)) {
-      lastStep = now; stepSide *= -1;
-      playEffect('foot', .27, .20 * stepSide, .96 + Math.random() * .11);
+    if (!extra.gaitSynced && !inCar && extra.walking && now - lastStep > (extra.running ? .29 : .40)) {
+      lastStep = now;footstep(extra.running,extra.x,extra.z);
     }
   }
-  return { wake, update, mute, nextStation, station: () => STATIONS[stationIndex].name,
+  return { wake, update, mute, footstep, nextStation, station: () => STATIONS[stationIndex].name,
     pulse: () => playEffect('pulse', .82), bump: () => playEffect('bump', .69),
     impact: () => playEffect('impact', .91, -.08, .91 + Math.random() * .15) };
 }

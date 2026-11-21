@@ -6,6 +6,12 @@ Studio by Rohit Biradar. Palm Coast retains each character's original outfit,
 idle and walk animations, converts walking to an in-place cycle, removes unused
 outfit meshes and facial morph targets, and reduces texture sizes.
 
+Andre's Run and Air clips are retargeted from Jog_Fwd_Loop and Jump_Loop
+by Quaternius, Universal Animation Library (CC0 1.0). The original Rocketbox
+rig and proportions are retained.
+https://quaternius.com/packs/universalanimationlibrary.html
+https://creativecommons.org/publicdomain/zero/1.0/
+
 Avatar Studio source, revision 2fd9ec82fbe1613d40ae38aadcca3f410725f740
 https://github.com/memoriesrohit/avatar-studio/tree/2fd9ec82fbe1613d40ae38aadcca3f410725f740/models
 https://github.com/memoriesrohit/avatar-studio/blob/2fd9ec82fbe1613d40ae38aadcca3f410725f740/THIRD_PARTY_NOTICES.md
