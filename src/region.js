@@ -157,6 +157,22 @@ function canopyTexture(canvasTexture,rnd){
 }
 
 function vegetate(b,m,rnd,blocks,tools){
+  function scannedAtlas(name) {
+    const map=new T.TextureLoader().load('/world/'+name+'-atlas.webp');
+    map.colorSpace=T.SRGBColorSpace;map.anisotropy=8;
+    const mat=new T.MeshLambertMaterial({map,side:T.DoubleSide,alphaTest:.29,vertexColors:true});
+    mat.userData.casts=true;
+    return mat;
+  }
+  const shadeTree=scannedAtlas('island_tree_01'),saltsprig=scannedAtlas('shrub_02');
+  function scan(mat,x,y,z,h,angle,tint='#ffffff') {
+    const r=h*(mat===shadeTree?.458:.485);
+    for(let k=0;k<2;k++){
+      const a=angle+k*Math.PI*.5,dx=r*Math.cos(a),dz=r*Math.sin(a),u=k*.5;
+      b.quad(mat,[[x-dx,y,z-dz],[x+dx,y,z+dz],[x+dx,y+h,z+dz],[x-dx,y+h,z-dz]],
+        [[u+.002,0],[u+.498,0],[u+.498,1],[u+.002,1]],tint);
+    }
+  }
   const leaf=new T.MeshStandardMaterial({map:canopyTexture(tools.canvasTexture,rnd),side:T.DoubleSide,alphaTest:.30,
     roughness:.91,vertexColors:true,emissive:0x24301a,emissiveIntensity:.32});
   leaf.userData.casts=true;
@@ -212,15 +228,38 @@ function vegetate(b,m,rnd,blocks,tools){
     if(land<0||occupied(x,z,4)||!roadClear(x,z,10))continue;
     const salt=x>15;const near=roadSample(x,z);
     if(salt){
-      if(i%4===0){tools.palm(b,m,rnd,x,z,5.9+rnd()*3.6,rnd()*6.28);}
-      else if(i%3===0)mangrove(x,z,2.6+rnd()*1.7);
-      else reeds(x,z,1.05+rnd()*.7);
+      if(i%5===0){tools.palm(b,m,rnd,x,z,5.9+rnd()*3.6,rnd()*6.28);}
+      else if(i%3===0)scan(shadeTree,x,.12,z,4.2+rnd()*3.6,rnd()*6.28);
+      else if(i%4===0)mangrove(x,z,2.6+rnd()*1.7);
+      else scan(saltsprig,x,.12,z,.8+rnd()*1.1,rnd()*6.28);
     }else{
-      if(i%3===0)cypress(x,z,5.3+rnd()*5.8);
+      if(i%6===0)cypress(x,z,5.3+rnd()*5.8);
+      else if(i%3===1)scan(shadeTree,x,.12,z,4.3+rnd()*4.9,rnd()*6.28);
       else if(i%5===0)mangrove(x,z,3.1+rnd()*1.6);
       else reeds(x,z,1.0+rnd()*1.2);
     }
     if(near&&near.distance<18&&i%4===0)blocks.push({x,z,w:.55,d:.55});
+  }
+  // Clusters of salt-tolerant brush along the highway's sandy shoulders.
+  for(let i=4;i<ROAD_STATIONS.length-4;i+=2){
+    const s=ROAD_STATIONS[i],side=rnd()<.5?-1:1;
+    if(s.bridge||s.z<185)continue;
+    const off=side*(8+rnd()*4.7),x=s.x+s.nx*off,z=s.z+s.nz*off;
+    if(occupied(x,z,1.4)||landIndexAt(x,z)<0)continue;
+    for(let j=0;j<5;j++){
+      const xx=x+(rnd()-.5)*2.7,zz=z+(rnd()-.5)*2.7;
+      if(landIndexAt(xx,zz)>=0)scan(saltsprig,xx,.12,zz,.65+rnd()*.83,rnd()*6.28);
+    }
+    if(i%8===4&&Math.abs(off)>9.2 && !occupied(x,z,5)) {
+      scan(shadeTree,x,.12,z,4.3+rnd()*2.4,rnd()*6.28);
+      blocks.push({x,z,w:.64,d:.64});
+    }
+  }
+  for(const [x,z,h] of [[142,421,6.0],[136,408,5.5],[134,392,5.9],[161,378,5.1],[161,443,4.7]]){
+    if(landIndexAt(x,z)>=0 && roadClear(x,z,7.2) && !occupied(x,z,2)){
+      scan(shadeTree,x,.12,z,h,.33+rnd()*.5);
+      blocks.push({x,z,w:.72,d:.72});
+    }
   }
   // Edge vegetation outlines the ragged river banks from both road and water.
   for(let i=0;i<REGION_LAND.length;i++){
@@ -231,6 +270,27 @@ function vegetate(b,m,rnd,blocks,tools){
       if(x<-60&&k%3===0)mangrove(x,z,2.5+rnd()*1.6);
       else reeds(x,z,.89+rnd()*1.2);
     }
+  }
+}
+
+function countyPoles(b,m){
+  let last=null,next=0;
+  for(const s of ROAD_STATIONS){
+    if(s.s<next || s.z<190 || s.x>-26 || s.bridge)continue;
+    next=s.s+29;
+    const [x,,z]=point(s,8.85);
+    if(landIndexAt(x,z)<0||REGIONAL_LOTS.some(p=>Math.abs(x-p.x)<16&&Math.abs(z-p.z)<16))continue;
+    b.rod(m.stone,[x,.12,z],[x,6.72,z],.095,'#94806a');
+    b.rod(m.stone,[x-.69,6.34,z],[x+.69,6.34,z],.073,'#9a856e');
+    for(const dx of [-.56,.56]){
+      b.instance('oval',m.glass,[x+dx,6.51,z],[.082,.11,.082],'#a8beb2');
+      if(last&&Math.hypot(last[0]-x,last[1]-z)<67){
+        const mid=[(last[0]+x)/2+dx,5.8,(last[1]+z)/2];
+        b.rod(m.chrome,[last[0]+dx,6.51,last[1]],mid,.014,'#525950');
+        b.rod(m.chrome,mid,[x+dx,6.51,z],.014,'#525950');
+      }
+    }
+    last=[x,z];
   }
 }
 
@@ -269,6 +329,7 @@ export function buildRegion(scene,b,m,blocks,tools) {
   const water=tidalWater(scene);
   highway(b,m);
   vegetate(b,m,rnd,blocks,tools);
+  countyPoles(b,m);
   wayfinding(b,m,tools.canvasTexture);
   return t=>{water.value=t;};
 }
