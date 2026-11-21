@@ -47,13 +47,17 @@ function site(b,m,blocks,p,atlas){
     const [wx,,wz]=rotate(x,0,z);
     blocks.push({x:wx,z:wz,w:Math.abs(c)*w+Math.abs(s)*d,d:Math.abs(s)*w+Math.abs(c)*d});
   }
+  function loose(kind,x,z,w,d,build){
+    const [wx,,wz]=rotate(x,0,z);
+    return b.breakable(kind,wx,wz,Math.abs(c)*w+Math.abs(s)*d,Math.abs(s)*w+Math.abs(c)*d,build);
+  }
   function sign(id,x,cy,z,w,hh){
     box(m.trim,x,cy,z,w+.09,hh+.09,.10,'#655c4d');
     const u=(id%2)/2,v=1-Math.floor(id/2)/2,us=.5;
     quad([[x+w/2,cy-hh/2,z-.06],[x-w/2,cy-hh/2,z-.06],[x-w/2,cy+hh/2,z-.06],[x+w/2,cy+hh/2,z-.06]],
       '#ffffff',atlas,[[u+.002,v-us+.002],[u+us-.002,v-us+.002],[u+us-.002,v-.002],[u+.002,v-.002]]);
   }
-  return {m,box,bar,part,quad,solid,sign};
+  return {m,box,bar,part,quad,solid,sign,loose};
 }
 
 function windowFront(S,x,y,z,w,h,shutters=false){
@@ -112,7 +116,11 @@ function outpost(S){
   box(m.trim,-2.98,1.36,1.025,1.13,2.00,.12,'#4b6c66');
   box(m.glass,-2.97,1.57,.945,.80,1.22,.04,'#647d74');
   sign(0,cx,2.86,-1.52,4,.92);
-  for(let i=0;i<4;i++)fishCrate(S,-8.8+i%2*1.10,-1.35,Math.floor(i/2));
+  for(const x of [-8.8,-7.7]){
+    S.loose('crate',x,-1.35,1.02,.76,()=>{
+      fishCrate(S,x,-1.35);fishCrate(S,x,-1.35,1);
+    });
+  }
   // Painted travel trailer with chamfered ends, steel hitch and two axles.
   const tx=5.0,tz=1.52;
   box(m.chrome,tx,.68,tz,7.8,.19,2.78,'#615f56');
@@ -129,16 +137,20 @@ function outpost(S){
   solid(tx,tz,8.10,2.9);
   box(m.trim,tx+.2,3.25,tz,1.27,.34,.80,'#b8b4a7');
   // Hanging net, colourful floats and roadside ice locker.
-  for(const x of [2.4,8.6])bar([x,.02,-3.85],[x,2.11,-3.85],.075,'#857051',m.stone);
-  for(let j=0;j<3;j++)bar([2.42,.85+j*.41,-3.85],[8.58,.85+j*.41,-3.85],.012,'#8a977e');
-  for(let i=0;i<15;i++){
-    const x=2.5+i*.41;
-    bar([x,.85,-3.85],[x+.32,1.68,-3.85],.010,'#8a977e');
-    if(i%3===0)part('oval',m.trim,x,1.74,-3.85,.067,.12,.067,i%2?'#d39149':'#d5c9a5');
-  }
-  box(m.trim,-9.9,.68,-2.53,1.5,1.32,.87,'#d3d4bc');
-  for(const sx of [-10.24,-9.56])box(m.trim,sx,.73,-2.98,.61,.95,.04,'#a6bdb7');
-  box(m.chrome,-9.82,.76,-3.03,.034,.24,.05,'#586f71');
+  S.loose('fence',5.5,-3.85,6.35,.18,()=>{
+    for(const x of [2.4,8.6])bar([x,.02,-3.85],[x,2.11,-3.85],.075,'#857051',m.stone);
+    for(let j=0;j<3;j++)bar([2.42,.85+j*.41,-3.85],[8.58,.85+j*.41,-3.85],.012,'#8a977e');
+    for(let i=0;i<15;i++){
+      const x=2.5+i*.41;
+      bar([x,.85,-3.85],[x+.32,1.68,-3.85],.010,'#8a977e');
+      if(i%3===0)part('oval',m.trim,x,1.74,-3.85,.067,.12,.067,i%2?'#d39149':'#d5c9a5');
+    }
+  });
+  S.loose('crate',-9.9,-2.53,1.5,.92,()=>{
+    box(m.trim,-9.9,.68,-2.53,1.5,1.32,.87,'#d3d4bc');
+    for(const sx of [-10.24,-9.56])box(m.trim,sx,.73,-2.98,.61,.95,.04,'#a6bdb7');
+    box(m.chrome,-9.82,.76,-3.03,.034,.24,.05,'#586f71');
+  });
 }
 
 // Skiff hull built from continuous keel/chine/gunwale sections rather than
@@ -169,18 +181,22 @@ function keys(S){
   windowFront(S,-.85,2.19,.34,1.20,.92);
   for(let j=0;j<14;j++)box(m.chrome,-9.33,2.27,.55+j*.42,.07,4.1,.035,'#9ca59b');
   sign(1,cx,4.00,-.06,7.1,.99);
-  box(m.stone,-8.62,1.92,-3.98,.18,3.84,.18,'#a3a693');
-  sign(3,-8.62,3.29,-4.05,2.26,1.08);
+  S.loose('sign',-8.62,-3.98,.32,.30,()=>{
+    box(m.stone,-8.62,1.92,-3.98,.18,3.84,.18,'#a3a693');
+    sign(3,-8.62,3.29,-4.05,2.26,1.08);
+  });
   // Fuel pumps, shaded gauges, hanging hose loops and zinc canopy.
   for(const x of [-5.95,-2.85]){
-    box(m.stone,x,.15,-4.35,1.24,.24,.96,'#ada891');
-    box(m.trim,x,.84,-4.35,.72,1.22,.54,'#c47250');
-    box(m.stone,x,1.65,-4.35,.84,.65,.64,'#e4dbc4');
-    box(m.glass,x,1.70,-4.69,.53,.25,.028,'#344742');
-    for(let j=0;j<4;j++)box(m.trim,x-.17+j*.11,1.71,-4.71,.068,.113,.018,'#c2cbb3');
-    bar([x+.41,1.56,-4.41],[x+.67,.47,-4.46],.033,'#383735');
-    bar([x+.67,.47,-4.46],[x+.81,.56,-4.46],.033,'#383735');
-    bar([x+.81,.56,-4.46],[x+.48,1.31,-4.46],.035,'#383735');
+    S.loose('meter',x,-4.35,1.25,.96,()=>{
+      box(m.stone,x,.15,-4.35,1.24,.24,.96,'#ada891');
+      box(m.trim,x,.84,-4.35,.72,1.22,.54,'#c47250');
+      box(m.stone,x,1.65,-4.35,.84,.65,.64,'#e4dbc4');
+      box(m.glass,x,1.70,-4.69,.53,.25,.028,'#344742');
+      for(let j=0;j<4;j++)box(m.trim,x-.17+j*.11,1.71,-4.71,.068,.113,.018,'#c2cbb3');
+      bar([x+.41,1.56,-4.41],[x+.67,.47,-4.46],.033,'#383735');
+      bar([x+.67,.47,-4.46],[x+.81,.56,-4.46],.033,'#383735');
+      bar([x+.81,.56,-4.46],[x+.48,1.31,-4.46],.035,'#383735');
+    });
   }
   for(const x of [-7.17,-1.75])bar([x,.07,-4.30],[x,3.1,-4.30],.078,'#88928b');
   box(m.trim,-4.46,3.15,-4.30,6.43,.14,2.7,'#b8beb0');

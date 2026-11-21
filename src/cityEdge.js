@@ -1,5 +1,5 @@
 import * as T from 'three';
-import { AVENUES, CROSS_STREETS, CITY_BOUNDS, CANAL_BANK, OPPOSITE_BANK, PORT_FENCE,
+import { AVENUES, CROSS_STREETS, CITY_BOUNDS, CANAL_BANK, OPPOSITE_BANK, PORT_FENCE, PORT_BACK,
   CANAL_ROAD,CANAL_BRIDGES,TOWPATH_WALL,BRIDGE_START,BRIDGE_END,BRIDGE_HALF_WIDTH,canalDeck } from './map.js';
 
 // The boulevard ends at a working canal. A second, built-up bank carries the
@@ -48,9 +48,13 @@ export function buildCityEdge(b,m,blocks,tools){
     ground(b,m.pavement,CANAL_BANK,lastZ,westRoad,nextZ,deck,2.7,'#e4dbbf');
     ground(b,m.pavement,BRIDGE_START,lastZ,OPPOSITE_BANK,nextZ,deck,2.7,'#cbcab1');
     for(const x of [CANAL_BANK+.55,OPPOSITE_BANK-.55]){
-      blocks.push({x,z:(lastZ+nextZ)/2,w:.28,d:nextZ-lastZ});
-      for(const y of [.58,1.16])b.box(m.chrome,x,y,(lastZ+nextZ)/2,.07,.075,nextZ-lastZ,iron);
-      for(let z=lastZ+.5;z<nextZ;z+=3.6)b.box(m.chrome,x,.69,z,.10,1.12,.10,iron);
+      for(let start=lastZ;start<nextZ;start+=3.6){
+        const length=Math.min(3.6,nextZ-start),center=start+length/2;
+        b.breakable('rail',x,center,.19,length,()=>{
+          for(const y of [.58,1.16])b.box(m.chrome,x,y,center,.07,.075,length,iron);
+          b.box(m.chrome,x,.69,start+Math.min(.5,length/2),.10,1.12,.10,iron);
+        });
+      }
     }
     lastZ=nextZ+2*(BRIDGE_HALF_WIDTH+.35);
   }
@@ -65,9 +69,6 @@ export function buildCityEdge(b,m,blocks,tools){
   }
   for(const z of CANAL_BRIDGES){
     const half=BRIDGE_HALF_WIDTH;
-    for(const side of [-1,1]){
-      blocks.push({x:(BRIDGE_START+BRIDGE_END)/2,z:z+side*(half-.12),w:BRIDGE_END-BRIDGE_START,d:.23});
-    }
     for(let i=0;i<24;i++){
       const x0=BRIDGE_START+(BRIDGE_END-BRIDGE_START)*i/24,x1=BRIDGE_START+(BRIDGE_END-BRIDGE_START)*(i+1)/24;
       const h0=canalDeck(x0),h1=canalDeck(x1);
@@ -79,9 +80,11 @@ export function buildCityEdge(b,m,blocks,tools){
         const zz=z+side*(half-.12);
         b.quad(m.fabric,[[x0,h0-.26,zz],[x1,h1-.26,zz],[x1,h1,zz],[x0,h0,zz]],undefined,stone);
         b.rod(m.stone,[x0,h0-.10,zz],[x1,h1-.10,zz],.21,stone);
-        b.rod(m.chrome,[x0,h0+.95,zz],[x1,h1+.95,zz],.065,iron);
-        b.rod(m.chrome,[x0,h0+.53,zz],[x1,h1+.53,zz],.04,iron);
-        if(i%2===0)b.rod(m.stone,[x0,h0,zz],[x0,h0+1,zz],.10,'#c1bb9e');
+        b.breakable('rail',(x0+x1)/2,zz,x1-x0,.22,()=>{
+          b.rod(m.chrome,[x0,h0+.95,zz],[x1,h1+.95,zz],.065,iron);
+          b.rod(m.chrome,[x0,h0+.53,zz],[x1,h1+.53,zz],.04,iron);
+          if(i%2===0)b.rod(m.stone,[x0,h0,zz],[x0,h0+1,zz],.10,'#c1bb9e');
+        });
       }
     }
     for(const x of [CANAL_BANK-3,OPPOSITE_BANK+3])for(const side of [-1,1]){
@@ -141,22 +144,52 @@ export function buildCityEdge(b,m,blocks,tools){
   });
   const sign=new T.MeshStandardMaterial({map:signTexture,side:T.DoubleSide,roughness:.68});
   const fenceZ=PORT_FENCE+.32, fenceLeft=TOWPATH_WALL,fenceRight=54;
-  blocks.push({x:(fenceLeft+fenceRight)/2,z:fenceZ,w:fenceRight-fenceLeft,d:.36});
-  b.box(m.stone,(fenceLeft+fenceRight)/2,.43,fenceZ,fenceRight-fenceLeft,.62,.42,'#acaa98');
-  for(const y of [.88,2.02])b.box(m.chrome,(fenceLeft+fenceRight)/2,y,fenceZ,fenceRight-fenceLeft,.08,.08,iron);
-  for(let x=fenceLeft;x<fenceRight;x+=.85)b.box(m.chrome,x,1.43,fenceZ,.048,1.43,.052,iron);
-  for(const x of AVENUES){
-    for(const side of [-1,1])b.box(m.stone,x+side*4.3,1.32,fenceZ, .52,2.62,.56,stone);
-    if(x===-128||x===0){
-      b.box(m.stone,x+7.8,1.61,fenceZ-2,4.85,3.2,4,'#e7d6ba');
-      b.box(m.glass,x+7.8,2.03,fenceZ+.05,4.15,1.12,.1,'#4e7078');
-      b.box(m.trim,x+7.8,3.30,fenceZ-2,5.3,.23,4.5,iron);
-      b.quad(sign,[[x-3,1.9,fenceZ+.22],[x+3,1.9,fenceZ+.22],[x+3,3.27,fenceZ+.22],[x-3,3.27,fenceZ+.22]]);
+  const yardWidth=fenceRight-fenceLeft,middle=(fenceLeft+fenceRight)/2;
+  ground(b,m.asphalt,fenceLeft,PORT_BACK,fenceRight,PORT_FENCE,.043,4.2,'#d3d4bf');
+  function retainingWall(x,z,w,d){
+    b.box(m.stone,x,.92,z,w,1.76,d,'#919989');
+    b.box(m.trim,x,1.84,z,w+.06,.15,d+.06,'#b8bbab');
+    blocks.push({x,z,w,d});
+  }
+  retainingWall(middle,PORT_BACK+.30,yardWidth,.60);
+  for(const x of [fenceLeft+.3,fenceRight-.3])retainingWall(x,(PORT_BACK+PORT_FENCE)/2,.6,PORT_FENCE-PORT_BACK);
+  function panels(start,end){
+    for(let lo=start;lo<end;lo+=5.1){
+      const hi=Math.min(end,lo+5.1),x=(lo+hi)/2,length=hi-lo;
+      if(length<.02)continue;
+      b.breakable('fence',x,fenceZ,length,.42,()=>{
+        b.box(m.stone,x,.43,fenceZ,length,.62,.42,'#acaa98');
+        for(const y of [.88,2.02])b.box(m.chrome,x,y,fenceZ,length,.08,.08,iron);
+        for(let picket=lo+.18;picket<hi;picket+=.85)b.box(m.chrome,picket,1.43,fenceZ,.048,1.43,.052,iron);
+      });
     }
   }
+  let from=fenceLeft;
+  for(const x of AVENUES){
+    panels(from,x-4.3);from=x+4.3;
+    for(const side of [-1,1]){
+      b.box(m.stone,x+side*4.3,1.32,fenceZ,.52,2.62,.56,stone);
+      blocks.push({x:x+side*4.3,z:fenceZ,w:.52,d:.56});
+    }
+    b.breakable('gate',x,fenceZ,8.1,.20,()=>{
+      for(const y of [.38,1.96])b.box(m.chrome,x,y,fenceZ,8.1,.12,.12,iron);
+      for(let i=-4;i<=4;i++)b.box(m.chrome,x+i*.88,1.17,fenceZ,.065,1.64,.065,iron);
+      b.rod(m.chrome,[x-4,.38,fenceZ],[x+4,1.96,fenceZ],.055,iron);
+      if(x===-128||x===0)
+        b.quad(sign,[[x-3,.65,fenceZ+.12],[x+3,.65,fenceZ+.12],[x+3,2.02,fenceZ+.12],[x-3,2.02,fenceZ+.12]]);
+    });
+    if(x===-128||x===0){
+      b.box(m.stone,x+7.8,1.61,fenceZ-2,4.85,3.2,4,'#e7d6ba');
+      blocks.push({x:x+7.8,z:fenceZ-2,w:4.85,d:4});
+      b.box(m.glass,x+7.8,2.03,fenceZ+.05,4.15,1.12,.1,'#4e7078');
+      b.box(m.trim,x+7.8,3.30,fenceZ-2,5.3,.23,4.5,iron);
+    }
+  }
+  panels(from,fenceRight);
   for(let j=0;j<6;j++){
     const x=-251+j*49,z=PORT_FENCE-25-(j%2)*7,w=32+rnd()*6,d=24,h=6.3+rnd()*3.2;
     b.box(m.stone,x,h/2,z,w,h,d,'#c5c8bb');
+    blocks.push({x,z,w,d});
     const front=z+d/2+.015;
     b.quad(m.harbor,[[x-w/2,.08,front],[x+w/2,.08,front],[x+w/2,h,front],[x-w/2,h,front]]);
     b.box(m.trim,x,h+.22,z,w+1,.41,d+1,'#769093');
@@ -196,13 +229,15 @@ export function buildCityEdge(b,m,blocks,tools){
     const z=172.1;
     ground(b,m.pavement,x-2.3,170,x+2.3,181,.146,2.5,'#cfc8a6');
     for(const side of [-1,1]){
-      b.rod(m.stone,[x+side*1.85,.14,169.7],[x+side*1.85,.92,169.7],.16,'#88725a');
-      blocks.push({x:x+side*1.85,z:169.7,w:.30,d:.30});
+      b.breakable('bollard',x+side*1.85,169.7,.32,.32,()=>{
+        b.rod(m.stone,[x+side*1.85,.14,169.7],[x+side*1.85,.92,169.7],.16,'#88725a');
+      });
     }
-    b.box(m.trim,x-4.5,2.29,z,3.1,.16,.95,'#47736a');
-    for(const dx of [-5.63,-3.37])b.box(m.stone,x+dx,1.18,z,.15,2.12,.16,'#8b785a');
-    b.quad(board,[[x-3.22,.9,z-.10],[x-5.78,.9,z-.10],[x-5.78,2.15,z-.10],[x-3.22,2.15,z-.10]]);
-    blocks.push({x:x-4.5,z,w:2.6,d:.25});
+    b.breakable('sign',x-4.5,z,2.6,.25,()=>{
+      b.box(m.trim,x-4.5,2.29,z,3.1,.16,.95,'#47736a');
+      for(const dx of [-5.63,-3.37])b.box(m.stone,x+dx,1.18,z,.15,2.12,.16,'#8b785a');
+      b.quad(board,[[x-3.22,.9,z-.10],[x-5.78,.9,z-.10],[x-5.78,2.15,z-.10],[x-3.22,2.15,z-.10]]);
+    });
   }
   return t=>{time.value=t;};
 }

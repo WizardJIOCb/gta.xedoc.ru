@@ -113,9 +113,11 @@ function highway(b,m) {
           footA[1]=footB[1]=.12;
           b.quad(m.fabric,[point(a,edge,-.20),point(c,edge,-.20),footB,footA],undefined,'#a8a077');
         }
-        b.rod(m.chrome,point(a,edge,.86),point(c,edge,.86),.068,'#c0c2b5');
-        b.rod(m.chrome,point(a,edge,.50),point(c,edge,.50),.042,'#9ca8a4');
-        b.rod(m.stone,point(a,edge,-.07),point(a,edge,.87),.075,'#b9b7a4');
+        b.railBetween(point(a,edge),point(c,edge),()=>{
+          b.rod(m.chrome,point(a,edge,.86),point(c,edge,.86),.068,'#c0c2b5');
+          b.rod(m.chrome,point(a,edge,.50),point(c,edge,.50),.042,'#9ca8a4');
+          b.rod(m.stone,point(a,edge,-.07),point(a,edge,.87),.075,'#b9b7a4');
+        });
       }
     }
     if(!bridge || c.s<bridge.waterLo||c.s>bridge.waterHi)continue;
@@ -127,9 +129,12 @@ function highway(b,m) {
       b.rod(m.stone,point(c,-5.25,-.47),point(c,5.25,-.47),.40,'#bcc1ad');
     }
     if(Math.floor(a.s/37)!==Math.floor(c.s/37)){
-      b.rod(m.chrome,point(c,5.45,.25),point(c,5.45,5.5),.067,'#829c9c');
-      b.rod(m.chrome,point(c,5.45,5.5),point(c,4.07,5.88),.055,'#9ca8a6');
-      b.box(m.bulb,...point(c,4.07,5.83),.44,.08,.32,'#ffe1a5');
+      const [x,,z]=point(c,5.45);
+      b.breakable('lamp',x,z,.21,.21,()=>{
+        b.rod(m.chrome,point(c,5.45,.25),point(c,5.45,5.5),.067,'#829c9c');
+        b.rod(m.chrome,point(c,5.45,5.5),point(c,4.07,5.88),.055,'#9ca8a6');
+        b.box(m.bulb,...point(c,4.07,5.83),.44,.08,.32,'#ffe1a5');
+      });
     }
   }
 }
@@ -325,11 +330,13 @@ function wayfinding(b,m,canvasTexture){
     const s=ROAD_STATIONS.reduce((best,v)=>Math.abs(v.s-sample.s)<Math.abs(best.s-sample.s)?v:best);
     const center=point(s,dir*7.7),nx=s.nx*dir,nz=s.nz*dir;
     const coord=(side,h)=>[center[0]+nx*side,s.y+h,center[2]+nz*side];
-    for(const side of [-1.35,1.35]){
-      b.rod(m.chrome,coord(side,-.19),coord(side,3.6),.062,'#9caa9c');
-    }
-    const left=(id%2)*.5+.003,right=left+.494,bottom=1-(Math.floor(id/2)+1)*.5+.007,top=bottom+.486;
-    b.quad(material,[coord(-1.92,1.68),coord(1.92,1.68),coord(1.92,3.63),coord(-1.92,3.63)],[[left,bottom],[right,bottom],[right,top],[left,top]]);
+    b.breakable('sign',center[0],center[2],Math.abs(nx)*3.4+.15,Math.abs(nz)*3.4+.15,()=>{
+      for(const side of [-1.35,1.35]){
+        b.rod(m.chrome,coord(side,-.19),coord(side,3.6),.062,'#9caa9c');
+      }
+      const left=(id%2)*.5+.003,right=left+.494,bottom=1-(Math.floor(id/2)+1)*.5+.007,top=bottom+.486;
+      b.quad(material,[coord(-1.92,1.68),coord(1.92,1.68),coord(1.92,3.63),coord(-1.92,3.63)],[[left,bottom],[right,bottom],[right,top],[left,top]]);
+    });
   }
 }
 
