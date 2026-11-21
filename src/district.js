@@ -28,7 +28,7 @@ function groundHeight(x,z) {
   return avenue<7 || (x<7 && cross<7) ? .025 : .16;
 }
 
-export function createDistrict(scene,blocks=[]) {
+export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
   const routes = [
     loop([[3,-163],[-67,-163],[-67,99],[3,99]]),
     loop([[-3,93],[-61,93],[-61,-221],[-3,-221]]),
@@ -86,6 +86,7 @@ export function createDistrict(scene,blocks=[]) {
       car.offset = (car.offset + speed*dt)%car.length;
       const t=car.offset/car.length;
       car.path.getPoint(t,p);
+      p.y=terrainHeight(p.x,p.z);
       const ahead=car.path.getPoint(((car.offset+0.4)%car.length)/car.length);
       const heading=Math.atan2(p.x-ahead.x,p.z-ahead.z);
       car.model.mesh.rotation.y=heading;
@@ -134,7 +135,7 @@ export function createDistrict(scene,blocks=[]) {
         ped.gaitSpeed=0;
       }else{
         ped.gaitSpeed=dt?Math.hypot(nx-obj.position.x,nz-obj.position.z)/dt:0;
-        obj.position.set(nx,groundHeight(nx,nz),nz);
+        obj.position.set(nx,terrainHeight(nx,nz),nz);
       }
     }
     for(const a of agents){
@@ -160,7 +161,7 @@ export function createDistrict(scene,blocks=[]) {
     [-5.65,-66,0x492a2d],[-5.7,-122,0x394b55],[-197.7,71,0x9b8a75],
     [-261.7,-75,0x526e72],[-5.7,-315,0x446071]].map(([x,z,color])=>{
     const model=createCar({color});
-    model.mesh.position.set(x,.015,z);model.mesh.rotation.y=Math.PI;
+    model.mesh.position.set(x,terrainHeight(x,z),z);model.mesh.rotation.y=Math.PI;
     scene.add(model.mesh);
     return {model};
   });
@@ -169,7 +170,7 @@ export function createDistrict(scene,blocks=[]) {
     if(ped.rag || ped.recovery || ped.cooldown>0)return 0;
     const p=ped.model.mesh.position;
     const nearby=blocks.filter(b=>Math.abs(p.x-b.x)<b.w/2+20 && Math.abs(p.z-b.z)<b.d/2+20);
-    ped.rag=createRagdoll(ped.model,velocity,groundHeight,nearby);
+    ped.rag=createRagdoll(ped.model,velocity,terrainHeight,nearby);
     return 1;
   }
   function hitVehicle(vehicle){
@@ -188,16 +189,23 @@ export function createDistrict(scene,blocks=[]) {
     }
     return count;
   }
-  function pulse(x,z,dx,dz,range,canReach){
+  function pulse(x,z,dx,dz,range,canReach,{cone=.79,strength=1,lift=3.4,maxHits=Infinity}={}){
     const length=Math.hypot(dx,dz);
     if(!length || range<=0)return 0;
-    let count=0;
+    const targets=[];
     for(const ped of pedestrians){
       const p=ped.model.mesh.position,ax=p.x-x,az=p.z-z,d=Math.hypot(ax,az);
       const forward=(ax*dx+az*dz)/length;
-      if(d>range || forward<0 || forward<d*.79 || (canReach && !canReach(p.x,p.z)))continue;
-      const push=4.3+(1-d/range)*3.9;
-      count+=knock(ped,new T.Vector3(ax/(d||1)*push,3.4,az/(d||1)*push));
+      if(ped.rag || ped.recovery || ped.cooldown>0 || d>range || forward<d*cone ||
+        (canReach && !canReach(p.x,p.z)))continue;
+      targets.push({ped,ax,az,d});
+    }
+    targets.sort((a,b)=>a.d-b.d);
+    let count=0;
+    for(const {ped,ax,az,d} of targets){
+      const push=(4.3+(1-d/range)*3.9)*strength;
+      count+=knock(ped,new T.Vector3(d>.001?ax/d*push:dx/length*push,lift,d>.001?az/d*push:dz/length*push));
+      if(count>=maxHits)break;
     }
     return count;
   }
@@ -208,7 +216,7 @@ export function createDistrict(scene,blocks=[]) {
       ped.rag?.restore();ped.recovery?.restore();ped.rag=ped.recovery=null;
       ped.dir=ped.spawn.dir;ped.origin=ped.spawn.z;ped.anchorX=ped.spawn.x;
       ped.cooldown=ped.speed=ped.gaitSpeed=0;
-      ped.model.mesh.position.set(ped.spawn.x,groundHeight(ped.spawn.x,ped.spawn.z),ped.spawn.z);
+      ped.model.mesh.position.set(ped.spawn.x,terrainHeight(ped.spawn.x,ped.spawn.z),ped.spawn.z);
       ped.model.mesh.rotation.set(0,ped.dir>0?Math.PI:0,0);ped.model.update(0,false);
     }
     update(0,new T.Vector3(1e6,0,1e6),false);
