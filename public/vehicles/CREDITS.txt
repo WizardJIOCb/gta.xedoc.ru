@@ -1,0 +1,35 @@
+Palm Coast character assets
+
+andre.glb, carlos.glb and emma.glb are adapted from the Microsoft Rocketbox
+Avatar Library. The rigged glTF conversion and animation clips are from Avatar
+Studio by Rohit Biradar. Palm Coast retains each character's original outfit,
+idle and walk animations, converts walking to an in-place cycle, removes unused
+outfit meshes and facial morph targets, and reduces texture sizes.
+
+Avatar Studio source, revision 2fd9ec82fbe1613d40ae38aadcca3f410725f740
+https://github.com/memoriesrohit/avatar-studio/tree/2fd9ec82fbe1613d40ae38aadcca3f410725f740/models
+https://github.com/memoriesrohit/avatar-studio/blob/2fd9ec82fbe1613d40ae38aadcca3f410725f740/THIRD_PARTY_NOTICES.md
+https://github.com/microsoft/Microsoft-Rocketbox
+
+MIT License
+
+Copyright (c) 2020 Microsoft
+Copyright (c) 2026 Rohit Biradar
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#1b2733">
+  <link rel="icon" href="data:,">
+  <title>Palm Coast | Чужие ключи</title>
+  <style>
+    html,body{height:100%;margin:0;overflow:hidden;background:#233641;color:#fff;font-family:system-ui,sans-serif}
+    #view{display:block;position:absolute;inset:0;width:100%;height:100%;touch-action:none;filter:contrast(1.075) saturate(1.12)}
+    body:before{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse at 53% 44%,transparent 48%,rgba(37,23,40,.115) 100%)}
+    #loading{position:absolute;z-index:20;inset:0;display:grid;align-content:center;justify-items:center;gap:12px;background:linear-gradient(165deg,#283c50,#754758 70%,#c47c68);font-size:14px}
+    #loading b{font:italic 52px Georgia,serif}#loading[hidden]{display:none}
+  </style>
+</head>
+<body>
+  <canvas id="view" aria-label="Игровой мир Palm Coast"></canvas>
+  <div id="loading" role="status"><b>Palm Coast</b><span>Загружается побережье…</span></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
