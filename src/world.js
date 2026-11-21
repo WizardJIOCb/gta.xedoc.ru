@@ -1,5 +1,7 @@
 import * as THREE from 'three';
-import { AVENUES, CROSS_STREETS, BOUNDS } from './map.js';
+import { AVENUES, CROSS_STREETS, CITY_BOUNDS as BOUNDS, regionGroundHeight, REGIONAL_LOTS } from './map.js';
+import { buildRegion } from './region.js';
+import { addRegionalProps } from './regionalProps.js';
 
 const ORIGINAL_ROWS = [-192,-128,-64,0,64];
 const HOTELS = [
@@ -540,7 +542,7 @@ function makeMaterials() {
 
 function streets(b,m,rnd) {
   // A continuous asphalt sheet leaves the intersections physically flush.
-  ground(b,m.asphalt,BOUNDS.minX-20,BOUNDS.minZ-30,18,BOUNDS.maxZ+30,0,4.2);
+  ground(b,m.asphalt,BOUNDS.minX-20,BOUNDS.minZ-30,18,BOUNDS.maxZ,0,4.2);
   for(const x of AVENUES){
     for(let z=BOUNDS.minZ;z<BOUNDS.maxZ;z+=5.4){
       if(CROSS_STREETS.some(c=>Math.abs(c-z)<9.6))continue;
@@ -601,8 +603,8 @@ function umbrella(b,m,x,z,shade,scale=1) {
 }
 
 function boardwalk(b,m,rnd,blocks) {
-  ground(b,m.sand,16,BOUNDS.minZ-160,96,BOUNDS.maxZ+160,.025,4.8);
-  ground(b,m.pavement,7.1,BOUNDS.minZ-30,16.8,BOUNDS.maxZ+30,.12,2.4);
+  ground(b,m.sand,16,BOUNDS.minZ-160,96,BOUNDS.maxZ,.025,4.8);
+  ground(b,m.pavement,7.1,BOUNDS.minZ-30,16.8,BOUNDS.maxZ,.12,2.4);
   for(let z=BOUNDS.minZ;z<BOUNDS.maxZ;z+=6) {
     if(Math.abs(z+160)<6)continue;
     b.rod(m.stone,[17.0,.10,z],[17.0,.95,z],.095,'#b4a38a');
@@ -676,7 +678,7 @@ function ocean(scene) {
       .replace('#include <color_fragment>',`#include <color_fragment>
         vec2 p=vWaterWorld.xz;
         float sh=60.0+1.35*sin(.09*p.y)+.66*sin(.24*p.y+.85*uSurfTime);
-        if(p.x<sh)discard;
+        if(p.x<sh || p.y>170.)discard;
         float d=p.x-sh;
         float swell=sin(.73*d+.13*sin(p.y*.67)+uSurfTime*1.12)+.55*sin(.44*d-.19*p.y+uSurfTime*.81);
         float cap=sin(d*1.31+.6*sin(.31*p.y)+.3*sin(.84*p.y)+uSurfTime*1.55);
@@ -1002,10 +1004,15 @@ export function createWorld(scene) {
   }
   b.finish();
   const waterTime=ocean(scene);
-  return {blocks,groundHeight:(x,z)=>floor.height(x,z),update(dt,time){
+  const regional=new StaticWorld(scene,floor);
+  const updateRegion=buildRegion(scene,regional,m,blocks,{palm,shrub,randomGenerator,canvasTexture});
+  addRegionalProps(regional,m,blocks,REGIONAL_LOTS);
+  regional.finish();
+  return {blocks,groundHeight:(x,z)=>Math.max(floor.height(x,z),z>=160?regionGroundHeight(x,z):0),update(dt,time){
     waterTime.value=Number.isFinite(time)?time:waterTime.value+dt;
     m.leaf.userData.breeze.value=waterTime.value;
     spinWheel(waterTime.value);
+    updateRegion(waterTime.value);
   }};
 }
 

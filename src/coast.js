@@ -1,6 +1,6 @@
 import * as T from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
-import { BOUNDS } from './map.js';
+import { CITY_BOUNDS as BOUNDS } from './map.js';
 
 // Render a low-resolution mirror under shallow pools. The rough asphalt
 // stays visible through the water and breaks up reflections along each edge.
