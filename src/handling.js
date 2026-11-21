@@ -7,7 +7,8 @@ const HULL_RADIUS=.87, HULL_PROBES=[1.27,-1.24,0];
 
 export function settleVehicle(v) {
   Object.assign(v,{speed:0,vx:0,vz:0,steer:0,yawRate:0,bodyPitch:0,bodyRoll:0,
-    pitchRate:0,rollRate:0,tireSlip:0,handbrakeAmount:0,impactDelay:0});
+    pitchRate:0,rollRate:0,tireSlip:0,handbrakeAmount:0,impactDelay:0,
+    frontWheelSpeed:0,rearWheelSpeed:0});
 }
 export function resetVehicle(v) {
   Object.assign(v,{x:5.4,z:66,yaw:0,damage:0});
@@ -147,7 +148,11 @@ function integrate(v,input,dt,sand,hitTest,onImpact) {
   v.bodyPitch+=v.pitchRate*dt;v.bodyRoll+=v.rollRate*dt;
   const slip=Math.min(1,Math.max(Math.abs(frontSlip),Math.abs(rearSlip))/.51)*Math.min(1,speed/4);
   v.tireSlip+=(slip-v.tireSlip)*(1-Math.exp(-9*dt));
-  const motion=-v.vx*Math.sin(v.yaw)-v.vz*Math.cos(v.yaw);
+  const finalSin=Math.sin(v.yaw),finalCos=Math.cos(v.yaw);
+  const motion=-v.vx*finalSin-v.vz*finalCos;
+  const lateralAtFront=-v.vx*finalCos+v.vz*finalSin+FRONT_AXLE*v.yawRate;
+  v.frontWheelSpeed=motion*wheelCos+lateralAtFront*wheelSin;
+  v.rearWheelSpeed=motion*(1-v.handbrakeAmount);
   const actual=Math.hypot(v.vx,v.vz);
   v.speed=(motion<0?-1:1)*actual;
 }
