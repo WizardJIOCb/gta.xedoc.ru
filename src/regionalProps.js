@@ -136,7 +136,9 @@ function outpost(S){
     bar([x,.85,-3.85],[x+.32,1.68,-3.85],.010,'#8a977e');
     if(i%3===0)part('oval',m.trim,x,1.74,-3.85,.067,.12,.067,i%2?'#d39149':'#d5c9a5');
   }
-  box(m.trim,-9.9,.68,-2.53,1.5,1.32,.87,'#d3d4bc');sign(3,-9.9,.83,-3.01,1.10,.42);
+  box(m.trim,-9.9,.68,-2.53,1.5,1.32,.87,'#d3d4bc');
+  for(const sx of [-10.24,-9.56])box(m.trim,sx,.73,-2.98,.61,.95,.04,'#a6bdb7');
+  box(m.chrome,-9.82,.76,-3.03,.034,.24,.05,'#586f71');
 }
 
 // Skiff hull built from continuous keel/chine/gunwale sections rather than
@@ -166,7 +168,7 @@ function keys(S){
   for(let j=0;j<16;j++)box(m.trim,cx-.64,.20+j*.204,.290,4.98,.031,.05,'#a8b0a2');
   windowFront(S,-.85,2.19,.34,1.20,.92);
   for(let j=0;j<14;j++)box(m.chrome,-9.33,2.27,.55+j*.42,.07,4.1,.035,'#9ca59b');
-  sign(1,cx,4.18,.24,7.1,1.24);
+  sign(1,cx,4.00,-.06,7.1,.99);
   box(m.stone,-8.62,1.92,-3.98,.18,3.84,.18,'#a3a693');
   sign(3,-8.62,3.29,-4.05,2.26,1.08);
   // Fuel pumps, shaded gauges, hanging hose loops and zinc canopy.
@@ -217,7 +219,7 @@ function glades(S){
   windowFront(S,cx-1.4,2.86,.59,1.71,.97,true);
   box(m.stone,cx+1.45,2.48,.56,1.18,2.03,.13,'#a69b7d');
   box(m.glass,cx+1.45,2.93,.47,.71,.72,.05,'#607575');
-  sign(2,cx,3.74,-1.80,4.19,.90);
+  sign(2,cx,3.34,-1.98,4.19,.78);
   for(let i=0;i<7;i++)box(m.stone,cx+2.35,1.34-i*.191,-1.93-i*.32,1.39,.15,.36,'#a18b6f');
   for(const side of [-1,1])bar([cx+2.35+side*.68,2.19,-1.86],[cx+2.35+side*.68,.87,-4.12],.049,'#8f7f66');
   // An airboat's pusher cage, rudders and tandem high seats.
