@@ -383,26 +383,33 @@ export function createCar({hero=false,color=0xd46e48}={}) {
   lamps.mesh(lampMaterial,body);
   const brakeMaterial=new THREE.MeshBasicMaterial({vertexColors:true,color:0xa56155,toneMapped:false});
   brakes.mesh(brakeMaterial,body);shadow(mesh);
-  const wheels=[];
-  for(const z of axles)for(const s of [-1,1]){
-    if(!hero)continue;
-    const pivot=new THREE.Group();pivot.position.set(s*.857,.333,z);mesh.add(pivot);
-    const wheel=new THREE.Mesh(makeWheel(true),detailMaterial);pivot.add(wheel);
-    wheel.castShadow=true;wheels.push({pivot,wheel,front:z<0});
+  const wheels=new THREE.InstancedMesh(makeWheel(hero),detailMaterial,4);
+  wheels.name='Road wheels';wheels.castShadow=true;mesh.add(wheels);
+  wheels.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  const wheelFrame=new THREE.Object3D();wheelFrame.rotation.order='YXZ';
+  let roll=0,lastSteer=0,previousRoll=0,previousSteer=0;
+  function placeWheels(steer,angle=roll) {
+    let i=0;
+    for(const z of axles)for(const side of [-1,1]){
+      wheelFrame.position.set(side*.857,.333,z);
+      wheelFrame.rotation.x=angle;wheelFrame.rotation.y=z<0?steer*.44:0;
+      wheelFrame.updateMatrix();wheels.setMatrixAt(i++,wheelFrame.matrix);
+    }
+    wheels.instanceMatrix.needsUpdate=true;
   }
-  if(!hero){
-    // Retain the wheel colours authored above when combining the four wheels.
-    const g=makeWheel(false), gs=[];
-    for(const z of axles)for(const s of [-1,1])gs.push(g.clone().translate(s*.857,.333,z));
-    const wheelSet=new THREE.Mesh(mergeGeometries(gs),detailMaterial);mesh.add(wheelSet);
-    gs.forEach(piece=>piece.dispose());
-  }
+  placeWheels(0);
   return {
     mesh, setDriverVisible(visible){if(occupant)occupant.visible=visible;},
+    renderWheels(alpha){
+      if(previousRoll!==roll || previousSteer!==lastSteer)
+        placeWheels(THREE.MathUtils.lerp(previousSteer,lastSteer,alpha),THREE.MathUtils.lerp(previousRoll,roll,alpha));
+    },
     update(dt,speed=0,steer=0,braking=false){
-      for(const {pivot,wheel,front} of wheels){
-        wheel.rotation.x-=speed*dt/.333;
-        if(front)pivot.rotation.y=steer*.44;
+      const travel=speed*dt;
+      previousRoll=roll;previousSteer=lastSteer;
+      if(travel!==0 || steer!==lastSteer){
+        roll-=travel/.333;
+        placeWheels(steer);lastSteer=steer;
       }
       body.rotation.z=THREE.MathUtils.damp(body.rotation.z,-steer*Math.min(Math.abs(speed)/17,1)*.028,7,dt);
       brakeMaterial.color.setHex(braking?0xffeeee:0xa56155);
@@ -471,24 +478,23 @@ export function createPerson({color=0x458687}={}) {
     idle=mixer.clipAction(THREE.AnimationClip.findByName(asset.animations,'Idle'));
     walk=mixer.clipAction(THREE.AnimationClip.findByName(asset.animations,'Walk'));
     idle.play();idle.time=(index*1.13)%idle.getClip().duration;
-    if(wasWalking){idle.stop();walk.play();walk.time=(index*.27)%walk.getClip().duration;}
+    walk.play();walk.time=(index*.27)%walk.getClip().duration;
+    idle.setEffectiveWeight(wasWalking?0:1);walk.setEffectiveWeight(wasWalking?1:0);
     mixer.update(0);
     mesh.add(actor);mesh.remove(skeleton);
     skeleton.traverse(part=>{if(part.isMesh)part.geometry.dispose();});
     return true;
   });
-  return {mesh,ready,update(dt,walking){
+  return {mesh,ready,update(dt,walking,walkSpeed=1.16){
+    wasWalking=Boolean(walking);
+    const gait=Math.max(.27,Math.min(1.9,walkSpeed/1.16));
+    amplitude=THREE.MathUtils.damp(amplitude,walking?1:0,9,dt);
     if(mixer) {
-      if(Boolean(walking)!==wasWalking) {
-        const from=wasWalking?walk:idle, to=walking?walk:idle;
-        to.reset().setEffectiveWeight(1).play();from.crossFadeTo(to,.20,false);
-      }
-      wasWalking=Boolean(walking);
+      walk.setEffectiveTimeScale(gait);walk.setEffectiveWeight(amplitude);
+      idle.setEffectiveWeight(1-amplitude);
       mixer.update(dt);return;
     }
-    wasWalking=Boolean(walking);
-    amplitude=THREE.MathUtils.damp(amplitude,walking?1:0,10,dt);
-    phase+=dt*6.8;
+    phase+=dt*6.8*gait;
     const step=Math.sin(phase)*amplitude;
     for(const {s,hip,shoulder} of limbs){hip.rotation.x=s*step*.39;shoulder.rotation.x=-s*step*.33;}
     skeleton.position.y=Math.abs(Math.cos(phase))*amplitude*.022;
