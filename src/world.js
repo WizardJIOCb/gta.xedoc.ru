@@ -3,6 +3,7 @@ import { AVENUES, CROSS_STREETS, CITY_BOUNDS as BOUNDS, regionGroundHeight, REGI
 import { buildRegion } from './region.js';
 import { buildCityEdge } from './cityEdge.js';
 import { addRegionalProps } from './regionalProps.js';
+import { scannedSurface } from './streetMaterials.js';
 
 const ORIGINAL_ROWS = [-192,-128,-64,0,64];
 const HOTELS = [
@@ -61,21 +62,6 @@ function streetTexture() {
       g.stroke();
     }
   }, true);
-}
-
-function sidewalkTexture() {
-  const rnd=randomGenerator(40);
-  return canvasTexture(256,256,(g,w,h)=>{
-    g.fillStyle='#cfc3b5';g.fillRect(0,0,w,h);
-    for(let i=0;i<6000;i++){
-      g.fillStyle=rnd()<.5?'rgba(72,64,57,.08)':'rgba(255,250,239,.19)';
-      g.fillRect(rnd()*w,rnd()*h,1+rnd()*2,1);
-    }
-    for(let a=0;a<=256;a+=128) {
-      g.fillStyle='rgba(62,57,51,.28)';g.fillRect(a,0,1,h);g.fillRect(0,a,w,1);
-      g.fillStyle='rgba(255,246,228,.4)';g.fillRect(a+1,0,1,h);g.fillRect(0,a+1,w,1);
-    }
-  },true);
 }
 
 // Each facade in the atlas contains its own glass reflections, curtains, plaster and shop interior.
@@ -271,6 +257,9 @@ function atlasUV(i,cols,rows) {
 function eastFace(b,mat,x,y,z,w,h,id,rows) {
   b.quad(mat,[[x,y,z+w/2],[x,y,z-w/2],[x,y+h,z-w/2],[x,y+h,z+w/2]],atlasUV(id,4,rows));
 }
+function westFace(b,mat,x,y,z,w,h,id,rows) {
+  b.quad(mat,[[x,y,z-w/2],[x,y,z+w/2],[x,y+h,z+w/2],[x,y+h,z-w/2]],atlasUV(id,4,rows));
+}
 function northFace(b,mat,x,y,z,w,h,id,rows,north) {
   const left=north?x+w/2:x-w/2,right=north?x-w/2:x+w/2;
   b.quad(mat,[[left,y,z],[right,y,z],[right,y+h,z],[left,y+h,z]],atlasUV(id,4,rows));
@@ -340,9 +329,10 @@ function decoHotel(b,m,rnd,blocks,x,z,w,d,h,id,iconic) {
   // X measures footprint depth, Z is the length of the Ocean Drive frontage.
   const hotel=HOTELS[id],front=x+w/2,base=.19,roof=base+h;
   const plaster=hotel[2],accent=hotel[3];
-  b.box(m.stone,x,base+h/2,z,w,h,d,plaster);
+  b.box(m.masonry,x,base+h/2,z,w,h,d,plaster);
   blocks.push({x,z,w,d});
   eastFace(b,m.facade,front+.012,base,z,d,h,id,3);
+  westFace(b,m.facade,x-w/2-.012,base,z,d,h,id,3);
   northFace(b,m.facade,x,base,z-d/2-.012,w,h,id,3,true);
   northFace(b,m.facade,x,base,z+d/2+.012,w,h,id,3,false);
   const shelf=(y,over,hh,tint)=>b.box(m.stone,x+.08,y,z,w+over,hh,d+over,tint);
@@ -415,13 +405,25 @@ function tower(b,m,rnd,x,z,w,d,h,id,solid,blocks) {
   const colors=['#c4c6c2','#d5c6b9','#bbccd1','#cccec4','#e0d2c2','#b6bec1'];
   const walls=colors[id%colors.length],glass=['#728e96','#78898d','#8ba7ad','#879c9c'][id%4];
   const podium=Math.min(5,h*.2),towerH=h-podium;
-  b.box(m.stone,x,podium/2+.2,z,w+2,podium,d+2,walls);
+  b.box(m.masonry,x,podium/2+.14,z,w+2,podium,d+2,walls);
+  if(solid){
+    const height=podium-.52,base=.25;
+    // Two shop-width bays per side leave stone piers at the corners.
+    for(let j=0;j<2;j++){
+      const zz=z+(j-.5)*d*.50,xx=x+(j-.5)*w*.50,shop=(id*3+j)%12;
+      eastFace(b,m.store,x+w*.5+1.025,base,zz,d*.46,height,shop,3);
+      westFace(b,m.store,x-w*.5-1.025,base,zz,d*.46,height,(shop+4)%12,3);
+      for(const side of [-1,1])northFace(b,m.store,xx,base,z+side*(d*.5+1.025),w*.46,height,(shop+(side+1)*2+2)%12,3,side<0);
+    }
+    b.box(m.masonry,x,podium-.13,z,w+2.27,.20,d+2.27,walls);
+  }
   if(solid) blocks.push({x,z,w:w+2,d:d+2});
   b.box(m.glass,x,podium+towerH/2,z,w,towerH,d,glass);
   const sheets=Math.max(1,Math.round(towerH/18));
   for(let f=0;f<sheets;f++){
     const bY=podium+f*towerH/sheets,sh=towerH/sheets;
     eastFace(b,m.office,x+w/2+.012,bY,z,d,sh,id%8,2);
+    westFace(b,m.office,x-w/2-.012,bY,z,d,sh,id%8,2);
     northFace(b,m.office,x,bY,z-d/2-.012,w,sh,id%8,2,true);
     northFace(b,m.office,x,bY,z+d/2+.012,w,sh,id%8,2,false);
   }
@@ -510,7 +512,9 @@ function makeMaterials() {
     facade:textured(facadeAtlas(),{roughness:.66}), sign:textured(signAtlas(),{roughness:.54,emissive:0x302424,emissiveIntensity:.6}),
     leaf:textured(featherTexture(),{side:THREE.DoubleSide,alphaTest:.23,roughness:.9}),
     bark:textured(barkMap,{side:THREE.DoubleSide}),asphalt:textured(streetTexture(),{roughness:.66,metalness:.07}),
-    pavement:textured(sidewalkTexture()),sand:textured(sandMap),
+    pavement:scannedSurface('promenade',.86,.64),pavers:scannedSurface('pavers',.91,.65),
+    masonry:scannedSurface('masonry',.90,.55,2.3),wood:scannedSurface('deck',.79,.50,1.9),
+    ribbed:scannedSurface('ribbed',.65,.57,2.7),sand:textured(sandMap),
     flat:std({vertexColors:true,roughness:.82}),stripe:std({vertexColors:true,roughness:.86}),
     fabric:std({side:THREE.DoubleSide,vertexColors:true,roughness:.87})
   };
@@ -599,13 +603,13 @@ function streets(b,m,rnd) {
   }
   for(const avenue of AVENUES.slice(0,-1)) for(const cross of CROSS_STREETS.slice(0,-1)){
     const x=avenue+32,z=cross+32;
-    b.walkableBox(m.stone,x,.07,z,49.4,.15,49.4,'#a39e92');
+    b.walkableBox(m.masonry,x,.07,z,49.4,.15,49.4,'#a39e92');
     ground(b,m.pavement,x-24.72,z-24.72,x+24.72,z+24.72,.154,2.4);
   }
   for(let i=0;i<CROSS_STREETS.length-1;i++){
     const z=(CROSS_STREETS[i]+CROSS_STREETS[i+1])*.5;
     for(const x of [-7.65,7.65]){
-      b.walkableBox(m.stone,x,.083,z,.20,.164,48.5,'#c9bda7');
+      b.walkableBox(m.masonry,x,.083,z,.20,.164,48.5,'#c9bda7');
       if(x>0)ground(b,m.pavement,x-.07,z-24.2,17.1,z+24.2,.15,2.4);
     }
   }
@@ -670,11 +674,11 @@ function boardwalk(b,m,rnd,blocks) {
   for(let z of [-207,-76,55]){
     const x=30,deckY=2.16;
     for(let dx of [-1.4,1.4])for(let dz of [-1.1,1.1])b.rod(m.stone,[x+dx,.1,z+dz],[x+dx,deckY,z+dz],.106,'#a88c70');
-    b.walkableBox(m.stone,x,deckY,z,4.25,.22,3.4,'#d9bf94');
-    b.box(m.stone,x,deckY+1.0,z,2.85,1.8,2.3,'#a7cdc1');
+    b.walkableBox(m.wood,x,deckY,z,4.25,.22,3.4,'#d9bf94');
+    b.box(m.wood,x,deckY+1.0,z,2.85,1.8,2.3,'#a7cdc1');
     for(let j of [-1,0,1])b.box(m.glass,x-1.44,deckY+1.28,z+j*.69,.04,.60,.56,'#628e93');
     b.box(m.stone,x,deckY+2.04,z,3.71,.22,2.97,'#ce8876');
-    for(let step=0;step<7;step++)b.walkableBox(m.stone,x-1.25-step*.28,deckY-step*.26,z,.40,.11,.82,'#c9aa85');
+    for(let step=0;step<7;step++)b.walkableBox(m.wood,x-1.25-step*.28,deckY-step*.26,z,.40,.11,.82,'#c9aa85');
     b.rod(m.chrome,[x+1.36,deckY,z],[x+1.36,5.9,z],.032,'#a7a39b');
     b.quad(m.fabric,[[x+1.36,5.8,z],[x+1.36,5.8,z+.95],[x+1.36,5.47,z+.77],[x+1.36,5.38,z]],undefined,'#d9705e');
     blocks.push({x,z,w:4.2,d:3.3});
@@ -811,7 +815,7 @@ function addStreetDetails(b,m,rnd,blocks) {
 function havanaBlock(b,m,rnd,blocks,x,z,plaza) {
   const paint=['#d48b76','#edca7a','#84b8ab','#dca8a0','#d7c9a7'];
   const wall=(cx,cz,w,d,h,shade)=>{
-    b.box(m.stone,cx,.18+h/2,cz,w,h,d,shade);
+    b.box(m.masonry,cx,.18+h/2,cz,w,h,d,shade);
     b.box(m.stone,cx,h+.33,cz,w+.45,.30,d+.45,'#f3e0b6');
     b.box(m.trim,cx,h+.52,cz,w+.28,.09,d+.28,'#a87158');
     blocks.push({x:cx,z:cz,w,d});
@@ -839,7 +843,7 @@ function havanaBlock(b,m,rnd,blocks,x,z,plaza) {
   }
   if(plaza) {
     const px=x+10;
-    ground(b,m.flat,px-9,z-16,px+10,z+16,.17,1,'#c58f74');
+    ground(b,m.pavers,px-9,z-16,px+10,z+16,.17,2.6);
     for(let i=-4;i<=4;i++)ground(b,m.flat,px-9,z+i*3.2-.1,px+10,z+i*3.2+.1,.18,1,'#f3d7a7');
     b.instance('disc',m.stone,[px,.47,z],[3.45,.61,3.45],'#e4c897');
     b.instance('disc',m.glass,[px,.79,z],[3.11,.06,3.11],'#5fc0b2');
@@ -893,7 +897,7 @@ function harborSheet(){
 
 function portBlock(b,m,rnd,blocks,x,z,gantry) {
   const shopX=x-9,shopZ=z+1,w=23,d=34,h=7.8;
-  b.box(m.stone,shopX,h/2+.18,shopZ,w,h,d,'#bdc5b6');
+  b.box(m.ribbed,shopX,h/2+.18,shopZ,w,h,d,'#bdc5b6');
   b.box(m.trim,shopX,h+.41,shopZ,w+1.15,.48,d+1.2,'#588b8d');
   for(const side of [-1,1]){
     const zz=shopZ+side*(d*.5+.04),left=shopX-side*w*.5,right=shopX+side*w*.5;
@@ -939,8 +943,8 @@ function portBlock(b,m,rnd,blocks,x,z,gantry) {
 function marinaSlips(b,m,rnd) {
   // Finger piers and moored boats sit past the swash line.
   for(let z=-400;z<-228;z+=32){
-    b.walkableBox(m.stone,60,.45,z,26,.60,2.1,'#a78564');
-    b.walkableBox(m.stone,72.4,.45,z+6.4,1.45,.60,14.5,'#c29b74');
+    b.walkableBox(m.wood,60,.45,z,26,.60,2.1,'#a78564');
+    b.walkableBox(m.wood,72.4,.45,z+6.4,1.45,.60,14.5,'#c29b74');
     for(let k=0;k<11;k++)b.walkableBox(m.stone,47.7+k*2.38,.77,z,.065,.035,2.02,'#795f4b');
     for(let xx of [48,60,72])b.rod(m.stone,[xx,-.2,z+1.1],[xx,1.39,z+1.1],.14,'#826c58');
     const bx=67,bz=z+8;
@@ -1019,7 +1023,7 @@ export function createWorld(scene) {
       tower(b,m,rnd,-44+(.5-rnd())*2,center+(j===0?-12:12),12+rnd()*3,14+rnd()*5,
         16+rnd()*24,(i*2+j)%8,true,blocks);
     }
-    for(const x of [-78,-109]){
+    for(const x of [-83,-109]){
       for(let j of [-1,1]){
         tower(b,m,rnd,x,center+j*12,14+rnd()*1.7,14+rnd()*4.4,12+rnd()*39,(i*4+j+10)%11,true,blocks);
       }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createGait } from './gait.js';
+import { createBodywork } from './bodywork.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
@@ -158,7 +159,7 @@ function licensePlate(group) {
   });
   const plate = new THREE.Mesh(new THREE.PlaneGeometry(.39,.17),
     new THREE.MeshStandardMaterial({map:plateTexture,roughness:.44}));
-  plate.position.set(0,.432,2.247);group.add(plate);
+  plate.geometry.translate(0,.432,2.247);group.add(plate);return plate;
 }
 
 const wheelGeometry = {};
@@ -182,7 +183,6 @@ function makeWheel(hero) {
       ring(0xb3aaa0,.222,.014,s(.127),hero?40:20);
       if(hero) {
         disc(0x71757a,.174,.01,s(.126));
-        p.box(0xb73422,[s(.134),.028,-.142],[.026,.115,.048]);
       }
       for(let i=0;i<(hero?10:5);i++){
         const a=i*2*Math.PI/(hero?10:5);
@@ -299,7 +299,16 @@ function rearAndNose(p, trim, chrome, lamps, brakes, hero) {
   p.add(bumperCap(true));p.add(bumperCap(false));
   p.ball(0xffffff,[0,.486,2.086],[.893,.26,.154]);
   p.ball(0xffffff,[0,.434,-2.077],[.852,.178,.145]);
-  trim.ball(0x242529,[0,.48,-2.154],[.714,.105,.086]);
+  const grille=[];
+  for(let i=-8;i<=8;i++){
+    const n=i/8,x=n*.64,z=-2.253+.059*n*n;
+    grille.push([[x,.496-.035*n*n,z],[x*.96,.367+.028*n*n,z+.006]]);
+  }
+  const intake=surface(grille);trim.add(intake,0x242b30);intake.dispose();
+  for(const y of [.396,.427,.458]){
+    const line=grille.map((row,i)=>[row[0][0]*.94,y-.014*((i-8)/8)**2,row[0][2]-.006]);
+    trim.line(0x515556,line,.006);
+  }
   trim.ball(0x23252b,[0,.368,2.075],[.784,.135,.15]);
   const bar=[[-.81,.70,2.10],[-.67,.698,2.175],[-.33,.681,2.24],[0,.679,2.25],
     [.33,.681,2.24],[.67,.698,2.175],[.81,.70,2.10]];
@@ -307,10 +316,14 @@ function rearAndNose(p, trim, chrome, lamps, brakes, hero) {
   lamps.line(0xe54539,bar.map(([x,y,z])=>[x,y,z+.018]),hero?.012:.018);
   for(const s of [-1,1]){
     brakes.line(0xff5438,[[s*.49,.685,2.228],[s*.68,.699,2.19],[s*.80,.709,2.129],[s*.85,.711,2.056]],.022);
-    trim.ball(0x343942,[s*.68,.676,-1.996],[.196,.051,.119],[.27,0,s*.08]);
-    lamps.line(0xffe8bb,[[s*.49,.69,-2.051],[s*.66,.702,-2.088],[s*.796,.706,-2.051]],.013);
+    const lens=[[.48,.607,-2.155],[.62,.632,-2.13],[.76,.659,-2.077],[.842,.679,-1.985]];
+    const rows=lens.map(([x,y,z],i)=>[[s*x,y+.021,z],[s*x,y-(i===0||i===3?.021:.052),z-.014]]);
+    if(s<0)rows.reverse();
+    const lamp=surface(rows);trim.add(lamp,0x34434b);lamp.dispose();
+    lamps.line(0xffe8bb,lens.map(([x,y,z])=>[s*x,y+.011,z-.009]),.011);
+    lamps.line(0xf1bf79,[[s*.812,.652,-2.034],[s*.842,.672,-1.998]],.007);
     if(hero){
-      lamps.line(0xffe7bf,[[s*.528,.675,-2.077],[s*.678,.684,-2.09],[s*.75,.689,-2.08]],.006);
+      lamps.line(0xe3eff1,[[s*.53,.59,-2.157],[s*.63,.603,-2.143],[s*.71,.622,-2.116]],.007);
       chrome.ball(0xaaa9a7,[s*.645,.31,2.168],[.097,.052,.077]);
       trim.ball(0x17191b,[s*.645,.312,2.201],[.076,.038,.057]);
     }
@@ -329,7 +342,6 @@ function rearAndNose(p, trim, chrome, lamps, brakes, hero) {
       trim.line(0x403b3b,[[s*.455,y,2.23],[s*.58,y+.003,2.211],[s*.714,y+.012,2.174]],.008);
     }
   }
-  for(let i=0;i<4;i++) trim.box(0x4b4748,[0,.414+i*.034,-2.219],[1.12,.009,.012]);
   for(let i=-3;i<=3;i++) trim.box(0x1e2022,[i*.14,.285,2.122],[.018,.075,.17],[.15,0,0]);
   chrome.line(0xa89781,[[-.08,.638,2.234],[0,.623,2.244],[.08,.638,2.234]],.008);
   for(let i=0;i<7;i++){
@@ -340,6 +352,13 @@ function rearAndNose(p, trim, chrome, lamps, brakes, hero) {
 
 function doorsAndHood(p, trim, bright) {
   for(const s of [-1,1]){
+    // Raised bonnet pressings taper into the wings. The dark recess and
+    // inset blades below each headlight follow the same impact field.
+    const ridge=surface([[-1.85,.67,.44],[-1.54,.708,.48],[-1.18,.747,.52],[-.80,.806,.57]]
+      .map(([z,y,x])=>[[s*(x-.045),y,z],[s*x,y+.022,z],[s*(x+.055),y+.006,z]]));
+    p.add(ridge);ridge.dispose();
+    trim.ball(0x25292c,[s*.605,.444,-2.165],[.148,.069,.064]);
+    for(const dy of [-.019,.014])bright.rod(0x797d7a,[s*.52,.447+dy,-2.218],[s*.69,.447+dy,-2.201],.006);
     trim.line(0x503830,[[s*.901,.802,-.626],[s*.897,.61,-.599],[s*.905,.357,-.475],
       [s*.922,.339,.48],[s*.932,.43,.663],[s*.947,.813,.712]],.006);
     trim.ball(0x5a453a,[s*.938,.788,.47],[.017,.021,.081]);
@@ -356,6 +375,37 @@ function doorsAndHood(p, trim, bright) {
   }
 }
 
+function trafficCabin(p,trim,metal,variant){
+  // Windscreen, roof and backlight have separate profiles for each body style.
+  const [nose,roofStart,roofEnd,tail,height]=[
+    [-.92,-.44,.43,1.05,1.42],[-.93,-.48,.88,1.17,1.51],[-.99,-.38,.26,1.22,1.31]
+  ][variant];
+  const sill=.849,top=.625;
+  const stations=[[nose,.77,sill],[roofStart,top,height-.035],[roofEnd,top,height],[tail,.77,sill+.035]];
+  const row=([z,w,y])=>[[-w,y-.026,z],[-w*.55,y+.016,z],[0,y+.025,z],[w*.55,y+.016,z],[w,y-.026,z]];
+  for(let i=0;i<3;i++){
+    const geom=surface([row(stations[i]),row(stations[i+1])]);
+    (i===1?p:trim).add(geom,i===1?0xffffff:0x38515b);
+    geom.dispose();
+  }
+  for(const s of [-1,1]){
+    const shoulder=s*.777,roof=s*top;
+    const rim=[[shoulder,sill,nose],[roof,height-.061,roofStart],[roof,height-.026,roofEnd],[shoulder,sill+.009,tail]];
+    const lower=[[shoulder,sill-.012,nose],[shoulder,sill,roofStart],[shoulder,sill,roofEnd],[shoulder,sill-.008,tail]];
+    const sideGlass=surface(s<0?[rim,lower]:[lower,rim]);
+    trim.add(sideGlass,0x344951);sideGlass.dispose();
+    for(const [a,b,r] of [[0,1,.034],[1,2,.025],[2,3,variant===2?.053:.038]])p.rod(0xffffff,rim[a],rim[b],r);
+    const divider=(roofStart+roofEnd)*.5;
+    trim.rod(0x202a2e,[shoulder,sill,divider+.045],[roof,height-.033,divider],.033);
+    metal.rod(0x85939a,[shoulder,sill+.008,nose],[shoulder,sill+.008,tail],.011);
+    for(const z of variant===2?[.24]:[-.12,.69]){
+      trim.box(0x38393b,[s*.925,.789,z],[.037,.035,.135]);
+      trim.line(0x414149,[[s*.914,.802,z+.13],[s*.929,.60,z+.16],[s*.913,.337,z+.06]],.006);
+    }
+    p.ball(0xffffff,[s*.96,.89,-.53],[.095,.045,.071]);
+  }
+}
+
 let trafficIndex=0;
 export function createCar({hero=false,color=0xd46e48}={}) {
   const mesh=new THREE.Group(), body=new THREE.Group();mesh.add(body);
@@ -363,44 +413,60 @@ export function createCar({hero=false,color=0xd46e48}={}) {
   for(const s of [-1,1]) p.add(halfHull(s));
   trim.box(0x25252a,[0,.31,0],[1.64,.19,3.91]);
   rearAndNose(p,trim,metal,lamps,brakes,hero);
-  let occupant=null;
+  let occupant=null,plate=null;
   if(hero){
     windshield(body,p,metal,trim);interior(trim,metal);doorsAndHood(p,trim,metal);
-    occupant=driver(body);licensePlate(body);
+    occupant=driver(body);plate=licensePlate(body);
   } else {
-    const variant=trafficIndex++%3, height=[.46,.55,.38][variant];
-    const roofZ=[.15,.27,.03][variant],length=[.92,1.03,.82][variant];
-    trim.ball(0x32454d,[0,.825,roofZ],[.793,height,length]);
-    p.ball(0xffffff,[0,.832+height*.81,roofZ+.055],[.625,height*.22,length*.59]);
-    for(const s of [-1,1]){
-      trim.rod(0x26292b,[s*.782,.843,roofZ-.1],[s*.597,.831+height*.86,roofZ-.077],.021);
-      p.rod(0xffffff,[s*.74,.84,roofZ+length*.76],[s*.55,.83+height*.83,roofZ+length*.42],.046);
-    }
+    trafficCabin(p,trim,metal,trafficIndex++%3);
   }
   const paint=new THREE.MeshPhysicalMaterial({color,vertexColors:true,metalness:.56,roughness:.285,
     clearcoat:hero?.92:.55,clearcoatRoughness:.14,side:THREE.DoubleSide});
-  p.mesh(paint,body);trim.mesh(detailMaterial,body);
-  if(metal.list.length)metal.mesh(chromeMaterial,body);
-  lamps.mesh(lampMaterial,body);
+  const panels=[p.mesh(paint,body),trim.mesh(detailMaterial,body),metal.mesh(chromeMaterial,body),lamps.mesh(lampMaterial,body)];
+  if(plate)panels.push(plate);
   const brakeMaterial=new THREE.MeshBasicMaterial({vertexColors:true,color:0xa56155,toneMapped:false});
-  brakes.mesh(brakeMaterial,body);shadow(mesh);
+  panels.push(brakes.mesh(brakeMaterial,body));shadow(mesh);
+  const bodywork=createBodywork(panels);
   const wheels=new THREE.InstancedMesh(makeWheel(hero),detailMaterial,4);
   wheels.name='Road wheels';wheels.castShadow=true;mesh.add(wheels);
   wheels.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  const wheelFrame=new THREE.Object3D();wheelFrame.rotation.order='YXZ';
+  const wheelFrame=new THREE.Object3D();wheelFrame.rotation.order='YZX';
+  const corners=[0,0,0,0];
+  const calipers=hero?new THREE.InstancedMesh(unitBox,new THREE.MeshStandardMaterial({color:0xb73422}),4):null;
+  if(calipers)mesh.add(calipers);
   let frontRoll=0,rearRoll=0,lastSteer=0,previousFront=0,previousRear=0,previousSteer=0;
   function placeWheels(steer,front=frontRoll,rear=rearRoll) {
     let i=0;
     for(const z of axles)for(const side of [-1,1]){
-      wheelFrame.position.set(side*.857,.333,z);
-      wheelFrame.rotation.x=z<0?front:rear;wheelFrame.rotation.y=z<0?steer*.44:0;
-      wheelFrame.updateMatrix();wheels.setMatrixAt(i++,wheelFrame.matrix);
+      const bend=corners[i];
+      wheelFrame.position.set(side*(.857-.078*bend),.333+.018*bend,z-Math.sign(z)*.13*bend);
+      wheelFrame.rotation.x=z<0?front:rear;wheelFrame.rotation.y=(z<0?steer*.44:0)+side*.13*bend;
+      wheelFrame.rotation.z=side*.14*bend;
+      wheelFrame.updateMatrix();wheels.setMatrixAt(i,wheelFrame.matrix);
+      if(calipers){
+        wheelFrame.rotation.x=0;wheelFrame.translateX(side*.132);wheelFrame.translateY(.028);wheelFrame.translateZ(-.14);
+        wheelFrame.scale.set(.026,.115,.048);wheelFrame.updateMatrix();calipers.setMatrixAt(i,wheelFrame.matrix);
+        wheelFrame.scale.set(1,1,1);
+      }
+      i++;
     }
     wheels.instanceMatrix.needsUpdate=true;
+    if(calipers)calipers.instanceMatrix.needsUpdate=true;
   }
   placeWheels(0);
   return {
     mesh, setDriverVisible(visible){if(occupant)occupant.visible=visible;},
+    dent(contact){
+      bodywork.dent(contact);
+      let i=0;
+      for(const z of axles)for(const side of [-1,1]){
+        const reach=Math.hypot((side*.90-contact.side)*1.4,z+contact.front);
+        corners[i]=Math.min(1,corners[i]+Math.max(0,1-reach/1.18)*Math.max(0,contact.speed-4)*.047);i++;
+      }
+      placeWheels(lastSteer);
+    },
+    get steeringBias(){return .042*(corners[0]-corners[1]);},
+    restore(){bodywork.restore();corners.fill(0);placeWheels(lastSteer);},
     setSuspension(pitch,roll){body.rotation.x=pitch;body.rotation.z=roll;},
     renderWheels(alpha){
       if(previousFront!==frontRoll || previousRear!==rearRoll || previousSteer!==lastSteer)

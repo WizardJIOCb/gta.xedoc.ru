@@ -49,7 +49,7 @@ export function createContactQuery(blocks,cars) {
       const mesh=car.model.mesh,dx=x-mesh.position.x,dz=z-mesh.position.z;
       if(Math.abs(dx)>2.2+r||Math.abs(dz)>2.2+r)continue;
       const yaw=mesh.rotation.y;
-      if(box(dx,dz,.85,1.85,Math.cos(yaw),Math.sin(yaw),car.path?car:null)&&!out)return true;
+      if(box(dx,dz,.85,1.85,Math.cos(yaw),Math.sin(yaw),car)&&!out)return true;
     }
     return best>=0||!isTraversable(x,z,r);
   };

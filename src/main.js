@@ -1,7 +1,6 @@
 import * as T from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import {addWetRoad,addGulls} from './coast.js';
-import {createBodywork} from './bodywork.js';
 import { createWorld } from './world.js';
 import { createCar, createPerson } from './vehicles.js';
 import { createHUD } from './hud.js';
@@ -50,7 +49,6 @@ async function start() {
   const skidMarks=createSkidMarks(scene,world.groundHeight);
   const gulls=addGulls(scene);
   const hero=createCar({hero:true,color:0xa82e24});
-  const bodywork=createBodywork(hero.mesh);
   const person=createPerson({color:0x28796f});
   scene.add(hero.mesh,person.mesh);
   const district=createDistrict(scene,world.blocks,world.groundHeight), audio=createAudio(), keys=new Set();
@@ -99,7 +97,7 @@ async function start() {
     destruction.reset();lastBreakSound=-Infinity;
     skidMarks.reset();
     resetVehicle(vehicle);
-    bodywork.restore();
+    hero.restore();
     const start=REGION_PLACES.find(p=>p.id==='KEYS');
     Object.assign(vehicle,{x:start.x,z:start.z,yaw:start.yaw});
     Object.assign(foot,{x:start.x+2.1,z:start.z+1,yaw:1.04,y:0,vy:0,vx:0,vz:0,grounded:true});
@@ -111,7 +109,7 @@ async function start() {
   }
   function cheat(code) {
     switch(code){
-      case 'FIX':vehicle.damage=0;bodywork.restore();return 'Кузов восстановлен';
+      case 'FIX':vehicle.damage=0;hero.restore();return 'Кузов восстановлен';
       case 'NITRO':nitro=!nitro;return nitro?'Форсаж включён':'Форсаж выключен';
       case 'OVERCHARGE':overcharge=!overcharge;return overcharge?'Усиление включено':'Обычный заряд';
       case 'SLOWMO':slowmo=!slowmo;return slowmo?'Время ×0,45':'Обычная скорость времени';
@@ -310,8 +308,8 @@ async function start() {
       }
     } else if(phase==='drive') {
       elapsed+=dt;
-      drive(vehicle,{gas,brake,turn,handbrake:down('Space'),nitro,breakProp,grade:roadGrade(vehicle.x,vehicle.z,vehicle.yaw)},dt,hit,(damage,contact)=>{
-        bodywork.dent(damage,contact);
+      drive(vehicle,{gas,brake,turn,steeringBias:hero.steeringBias,handbrake:down('Space'),nitro,breakProp,grade:roadGrade(vehicle.x,vehicle.z,vehicle.yaw)},dt,hit,(damage,contact)=>{
+        hero.dent(contact);
         audio.impact();say(damage?'Удар по кузову  ·  минус $'+damage*8:'Удар по кузову');
       });
       skidMarks.update(vehicle);

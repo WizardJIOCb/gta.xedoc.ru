@@ -61,7 +61,7 @@ export function buildCityEdge(b,m,blocks,tools){
   ground(b,m.pavement,westRoad,PORT_FENCE,54,northRoad,deck,2.7,'#cbc9bd');
   ground(b,m.asphalt,CANAL_ROAD-4.5,PORT_FENCE,BRIDGE_START,south,.014,4.2);
   ground(b,m.pavement,TOWPATH_WALL,PORT_FENCE,CANAL_ROAD-4.5,south,deck,2.5);
-  b.box(m.stone,TOWPATH_WALL,.91,(PORT_FENCE+south)/2,.4,1.8,south-PORT_FENCE,'#aaac94');
+  b.box(m.masonry,TOWPATH_WALL,.91,(PORT_FENCE+south)/2,.4,1.8,south-PORT_FENCE,'#aaac94');
   blocks.push({x:TOWPATH_WALL,z:(PORT_FENCE+south)/2,w:.4,d:south-PORT_FENCE});
   for(let z=PORT_FENCE+3;z<south-3;z+=7){
     if(CANAL_BRIDGES.some(at=>Math.abs(z-at)<8))continue;
@@ -115,7 +115,7 @@ export function buildCityEdge(b,m,blocks,tools){
   for(let j=0;j<15;j++){
     const z=PORT_FENCE+20+j*39,front=CANAL_ROAD-10-rnd()*2;
     const levels=2+(j%4),h=levels*2.9,d=24+rnd()*8,w=12+rnd()*5;
-    b.box(m.stone,front-w/2,h/2+.05,z,w,h,d,facades[j%5]);
+    b.box(m.masonry,front-w/2,h/2+.05,z,w,h,d,facades[j%5]);
     blocks.push({x:front-w/2,z,w,d});
     for(let k=0;k<2;k++)eastFace(b,m.facade,front+.025,.10,z+(k-.5)*d/2,d*.497,h-.10,j%12,3);
     b.box(m.trim,front-w/2,h+.16,z,w+.65,.30,d+.6,'#dacfb9');
@@ -132,7 +132,7 @@ export function buildCityEdge(b,m,blocks,tools){
       blocks.push({x:OPPOSITE_BANK-3,z:z+10,w:.6,d:.6});
     }
     if(j%2===1){
-      b.box(m.stone,OPPOSITE_BANK+1.75,-.18,z-8,3.9,.26,8,'#ad8e65');
+      b.box(m.wood,OPPOSITE_BANK+1.75,-.18,z-8,3.9,.26,8,'#ad8e65');
       for(const dz of [-11,-5])b.rod(m.stone,[OPPOSITE_BANK+3.3,-1.2,z+dz],[OPPOSITE_BANK+3.3,.32,z+dz],.13,'#876e54');
     }
   }
@@ -179,7 +179,7 @@ export function buildCityEdge(b,m,blocks,tools){
         b.quad(sign,[[x-3,.65,fenceZ+.12],[x+3,.65,fenceZ+.12],[x+3,2.02,fenceZ+.12],[x-3,2.02,fenceZ+.12]]);
     });
     if(x===-128||x===0){
-      b.box(m.stone,x+7.8,1.61,fenceZ-2,4.85,3.2,4,'#e7d6ba');
+      b.box(m.masonry,x+7.8,1.61,fenceZ-2,4.85,3.2,4,'#e7d6ba');
       blocks.push({x:x+7.8,z:fenceZ-2,w:4.85,d:4});
       b.box(m.glass,x+7.8,2.03,fenceZ+.05,4.15,1.12,.1,'#4e7078');
       b.box(m.trim,x+7.8,3.30,fenceZ-2,5.3,.23,4.5,iron);
@@ -188,7 +188,7 @@ export function buildCityEdge(b,m,blocks,tools){
   panels(from,fenceRight);
   for(let j=0;j<6;j++){
     const x=-251+j*49,z=PORT_FENCE-25-(j%2)*7,w=32+rnd()*6,d=24,h=6.3+rnd()*3.2;
-    b.box(m.stone,x,h/2,z,w,h,d,'#c5c8bb');
+    b.box(m.ribbed,x,h/2,z,w,h,d,'#c5c8bb');
     blocks.push({x,z,w,d});
     const front=z+d/2+.015;
     b.quad(m.harbor,[[x-w/2,.08,front],[x+w/2,.08,front],[x+w/2,h,front],[x-w/2,h,front]]);

@@ -102,8 +102,16 @@ function moveChassis(v,dt,hitTest,onImpact,breakProp) {
       if(closing>2.5 && !v.impactDelay){
         const damage=Math.min(100-v.damage,Math.max(1,Math.round((closing-2)*1.65)));
         v.damage+=damage;v.impactDelay=.45;
-        onImpact(damage,{front:-rx*Math.sin(yaw)-rz*Math.cos(yaw),
-          side:rx*Math.cos(yaw)-rz*Math.sin(yaw),speed:closing});
+        function contact(h,x,z,sign){
+          const s=Math.sin(h),c=Math.cos(h);
+          return {front:-x*s-z*c,side:x*c-z*s,speed:closing,
+            inwardX:sign*(nx*c-nz*s),inwardZ:sign*(nx*s+nz*c)};
+        }
+        onImpact(damage,contact(yaw,rx,rz,1));
+        if(hit.target){
+          const mesh=hit.target.model.mesh;
+          hit.target.model.dent(contact(mesh.rotation.y,x+rx-mesh.position.x,z+rz-mesh.position.z,-1));
+        }
       }
     }
     x+=nx*(hit.depth+.001);z+=nz*(hit.depth+.001);
@@ -116,7 +124,7 @@ function integrate(v,input,dt,sand,hitTest,onImpact) {
   const sin=Math.sin(v.yaw),cos=Math.cos(v.yaw);
   const forward=-sin*v.vx-cos*v.vz,left=-cos*v.vx+sin*v.vz;
   const speed=Math.hypot(v.vx,v.vz);
-  const steerTarget=input.turn*(.55/(1+.042*speed));
+  const steerTarget=input.turn*(.55/(1+.042*speed))+(input.steeringBias||0);
   v.steer+=(steerTarget-v.steer)*(1-Math.exp(-7.8*dt));
   v.handbrakeAmount+=(Number(!!input.handbrake)-v.handbrakeAmount)*
     (1-Math.exp(-(input.handbrake?15:4.5)*dt));

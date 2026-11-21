@@ -2,7 +2,7 @@ import * as T from 'three';
 import {carContact} from './vehicleContact.js';
 
 // Articulated point masses are sampled in the current animation pose. Torso
-// braces preserve its volume; the elbow, knee and ankle chains remain free.
+// braces preserve its volume while the articulated legs follow the pelvis.
 const sides = ['Left', 'Right'];
 const chains = [
   ['Hips','Head'], ['Head','Crown'],
@@ -116,7 +116,8 @@ export function createRagdoll(model, velocity, floor, obstacles=[], contact=null
     links.push({p,q,min:reach(minAngle),max:reach(maxAngle)});
   }
   for(const s of sides){
-    flex(s+'UpLeg',s+'Leg',s+'Foot',34,176);
+    flex(s+'UpLeg',s+'Leg',s+'Foot',48,177);
+    flex(s+'Leg',s+'Foot',s+'ToeBase',65,145);
     flex(s+'Arm',s+'ForeArm',s+'Hand',30,172);
     connect(s+'Arm','Crown',.77,1.2);
     for(const [a,b] of [[s+'Hand','Head'],[s+'ForeArm','Hips'],[s+'Foot','Hips']]){
@@ -125,6 +126,55 @@ export function createRagdoll(model, velocity, floor, obstacles=[], contact=null
     }
   }
   const startFrame=torsoFrame(points).invert();
+  const right=v(),up=v(),forward=v(),thigh=v(),axis=v(),pole=v(),target=v();
+  function bodyAxes(){
+    right.subVectors(points.RightArm.pos,points.LeftArm.pos).normalize();
+    up.addVectors(points.RightArm.pos,points.LeftArm.pos).multiplyScalar(.5).sub(points.Hips.pos);
+    forward.crossVectors(right,up).normalize();
+    up.crossVectors(forward,right).normalize();
+  }
+  bodyAxes();
+  const toeDirection=v();
+  for(const s of sides)toeDirection.add(thigh.subVectors(points[s+'ToeBase'].pos,points[s+'Foot'].pos));
+  const facing=toeDirection.dot(forward)<0?-1:1;
+  const legs=sides.map(s=>({hip:points[s+'UpLeg'].pos,knee:points[s+'Leg'].pos,foot:points[s+'Foot'].pos,
+    side:s==='Right'?1:-1,length:points[s+'UpLeg'].pos.distanceTo(points[s+'Leg'].pos)}));
+  const chest=v(),away=v();
+  const arms=sides.flatMap(s=>[points[s+'ForeArm'],points[s+'Hand']]);
+  function limitLimbs(){
+    bodyAxes();
+    forward.multiplyScalar(facing);
+    // Keep wrists and elbows outside the capsule between the hips and chest.
+    chest.addVectors(points.LeftArm.pos,points.RightArm.pos).multiplyScalar(.5).sub(points.Hips.pos);
+    for(const p of arms){
+      away.subVectors(p.pos,points.Hips.pos);
+      const t=T.MathUtils.clamp(away.dot(chest)/Math.max(.001,chest.lengthSq()),0,1);
+      away.addScaledVector(chest,-t);
+      const d=away.length(),clearance=.115+.035*t+p.radius;
+      if(d>.0001&&d<clearance)p.pos.addScaledVector(away,(clearance-d)*.78/d);
+    }
+    for(const {hip,knee,foot,side,length} of legs){
+      thigh.subVectors(knee,hip).normalize();
+      const pitch=Math.atan2(thigh.dot(forward),-thigh.dot(up));
+      const spread=Math.asin(T.MathUtils.clamp(thigh.dot(right)*side,-1,1));
+      const bend=T.MathUtils.clamp(pitch,-.63,1.65),out=T.MathUtils.clamp(spread,-.16,.93);
+      if(bend!==pitch||out!==spread){
+        target.copy(hip).addScaledVector(right,side*length*Math.sin(out))
+          .addScaledVector(forward,length*Math.sin(bend)*Math.cos(out))
+          .addScaledVector(up,-length*Math.cos(bend)*Math.cos(out));
+        knee.lerp(target,.55);
+      }
+      // Knees flex forward relative to the hip-to-ankle line, including
+      // when the entire character has rolled onto their back or side.
+      axis.subVectors(foot,hip).normalize();
+      pole.copy(forward).addScaledVector(right,side*.15);
+      pole.addScaledVector(axis,-pole.dot(axis));
+      if(pole.lengthSq()<.04)continue;
+      pole.normalize();
+      const offset=thigh.subVectors(knee,hip).dot(pole);
+      if(offset<0)knee.addScaledVector(pole,-offset*.76);
+    }
+  }
   const initialHipsRotation=bones.Hips.getWorldQuaternion(quaternion());
   const rotations=chains.filter(([name])=> name!=='Hips').map(([name,end])=>({
     bone:bones[name],a:points[name],b:points[end],
@@ -134,7 +184,7 @@ export function createRagdoll(model, velocity, floor, obstacles=[], contact=null
   const driven=[bones.Hips,...rotations.map(r=>r.bone)];
   const original=driven.map(b=>b.quaternion.clone());
   const originalHips=bones.Hips.position.clone();
-  const parentQ=quaternion(),direction=v(),newQ=quaternion(),delta=v();
+  const parentQ=quaternion(),direction=v(),newQ=quaternion(),delta=v(),torsoTurn=quaternion(),carried=v();
   function worldRotation(bone,q){
     bone.parent.getWorldQuaternion(parentQ);
     bone.quaternion.copy(parentQ.invert()).multiply(q).normalize();
@@ -155,10 +205,12 @@ export function createRagdoll(model, velocity, floor, obstacles=[], contact=null
   function applyPose(alpha=1){
     for(const p of particles)p.display.lerpVectors(p.last,p.pos,alpha);
     bones.Hips.position.copy(bones.Hips.parent.worldToLocal(delta.copy(points.Hips.display)));
-    worldRotation(bones.Hips,torsoFrame(display).multiply(startFrame).multiply(initialHipsRotation));
+    torsoTurn.copy(torsoFrame(display)).multiply(startFrame);
+    worldRotation(bones.Hips,newQ.copy(torsoTurn).multiply(initialHipsRotation));
     for(const r of rotations){
       direction.subVectors(r.b.display,r.a.display).normalize();
-      newQ.setFromUnitVectors(r.dir,direction).multiply(r.start);
+      carried.copy(r.dir).applyQuaternion(torsoTurn);
+      newQ.setFromUnitVectors(carried,direction).multiply(torsoTurn).multiply(r.start);
       worldRotation(r.bone,newQ);
     }
     keepSkinAboveFloor();
@@ -218,6 +270,7 @@ export function createRagdoll(model, velocity, floor, obstacles=[], contact=null
           delta.multiplyScalar((len-rest)/(len*(p.invMass+q.invMass)));
           p.pos.addScaledVector(delta,p.invMass);q.pos.addScaledVector(delta,-q.invMass);
         }
+        limitLimbs();
         for(const p of particles){
           const y=floor(p.pos.x,p.pos.z)+p.radius;
           if(p.pos.y<y){project(p,correction.set(0,y-p.pos.y,0),null,dt);p.ground=true;}

@@ -75,14 +75,14 @@ function windowFront(S,x,y,z,w,h,shutters=false){
 function roof(S,x,z,w,d,eaves,rise,tint){
   const {m,part,bar}=S,half=d/2,angle=Math.atan2(rise,half);
   for(const side of [-1,1]){
-    part('box',m.trim,x,eaves+rise*.5,z+side*d*.25,w,.085,Math.hypot(half,rise),tint,side*angle);
+    part('box',m.ribbed,x,eaves+rise*.5,z+side*d*.25,w,.085,Math.hypot(half,rise),tint,side*angle);
     for(let dx=-w/2+.15;dx<w/2;dx+=.47)
       bar([x+dx,eaves+.075,z+side*half],[x+dx,eaves+rise+.075,z],.018,'#ab9e8b');
   }
   bar([x-w/2,eaves+rise+.09,z],[x+w/2,eaves+rise+.09,z],.075,'#b1aa94');
 }
 function timber(S,x,y,z,w,h,d,col){
-  const {m,box}=S;box(m.stone,x,y,z,w,h,d,col);
+  const {m,box}=S;box(m.masonry,x,y,z,w,h,d,col);
   for(let k=1;k<h/.34;k++){
     const by=y-h*.5+k*.34;
     box(m.trim,x,by,z-d*.5-.025,w,.026,.040,'#817969');
@@ -90,7 +90,7 @@ function timber(S,x,y,z,w,h,d,col){
 }
 function porch(S,x,z,w,d,y,roofY){
   const {m,box,bar}=S;
-  for(let i=0;i<Math.ceil(d/.24);i++)box(m.stone,x,y,z-d*.5+.12+i*.24,w,.12,.225,i%3?'#a99272':'#b19b79');
+  for(let i=0;i<Math.ceil(d/.24);i++)box(m.wood,x,y,z-d*.5+.12+i*.24,w,.12,.225,i%3?'#a99272':'#b19b79');
   for(const side of [-1,1])for(const end of [-1,1]){
     const px=x+side*(w*.5-.13),pz=z+end*(d/2-.13);
     box(m.stone,px,roofY/2,pz,.18,roofY,.18,'#8c816c');
@@ -174,7 +174,7 @@ function hull(S,x,z,width,length,keel,paint){
 function keys(S){
   const {m,box,part,bar,sign,solid}=S;
   const cx=-4.5,cz=3.4;
-  box(m.stone,cx,2.25,cz,9.6,4.34,5.98,'#c7c6b1');solid(cx,cz,9.6,6);
+  box(m.ribbed,cx,2.25,cz,9.6,4.34,5.98,'#c7c6b1');solid(cx,cz,9.6,6);
   roof(S,cx,cz,10.12,6.6,4.42,.89,'#7a9a9b');
   box(m.chrome,cx-.64,1.78,.375,5.0,3.32,.12,'#7d9593');
   for(let j=0;j<16;j++)box(m.trim,cx-.64,.20+j*.204,.290,4.98,.031,.05,'#a8b0a2');

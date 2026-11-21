@@ -294,6 +294,7 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
     return count;
   }
   function reset(){
+    for(const car of allCars)car.model.restore();
     heroVolume.x=heroVolume.z=Infinity;
     beginStep();simTime=lastStep=animationTime=0;
     for(const car of cars){car.offset=car.initialOffset;car.steer=0;car.speed=Math.min(car.pace,car.cornerSpeed(car.offset));car.response.reset();}
