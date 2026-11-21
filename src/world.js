@@ -239,8 +239,9 @@ function featherTexture() {
 
 function palm(b,m,rnd,x,z,height,heading) {
   const bx=x,bz=z,lean=.4+rnd()*1.2;
+  const groundY=x>17?.026:.15;
   const bend=t=>[bx+Math.cos(heading)*lean*t*t+Math.sin(heading)*.35*Math.sin(t*Math.PI),
-    .2+height*t,bz+Math.sin(heading)*lean*t*t];
+    groundY+height*t,bz+Math.sin(heading)*lean*t*t];
   const ringCount=14, sides=8;
   for(let i=0;i<ringCount;i++) {
     const ta=i/ringCount,tb=(i+1)/ringCount,ca=bend(ta),cb=bend(tb);
@@ -462,7 +463,8 @@ function makeMaterials() {
         float shore=60.+1.35*sin(.09*vBeach.z);
         float wet=smoothstep(shore-8.,shore+1.,vBeach.x+sin(.37*vBeach.z)*.6);
         float ripple=sin(vBeach.x*14.+2.3*sin(vBeach.z*.56)+sin(vBeach.x*1.7-vBeach.z*.21));
-        vec3 dry=vec3(.70,.545,.34)*(.69+.45*sqrt(min(grain*2.3,1.))+ripple*.024);
+        float detail=clamp((grain-.09)*3.8,-.28,.30);
+        vec3 dry=vec3(.70,.545,.34)*(.90+detail+ripple*.034);
         diffuseColor.rgb=mix(dry,dry*vec3(.52,.58,.61),wet);
       `);
   };
@@ -676,7 +678,7 @@ function shrubTexture() {
 function shrub(b,m,rnd,x,z,scale) {
   for(let j=0;j<3;j++){
     const a=j*Math.PI/3+rnd()*.18,dx=Math.cos(a)*scale*1.25,dz=Math.sin(a)*scale*1.25;
-    const y=.23,h=1.58*scale;
+    const y=x>17?.028:.22,h=1.58*scale;
     b.quad(m.bush,[[x-dx,y,z-dz],[x+dx,y,z+dz],[x+dx,y+h,z+dz],[x-dx,y+h,z-dz]]);
   }
 }
@@ -934,8 +936,7 @@ export function createWorld(scene) {
     }
     for(const x of [-78,-109]){
       for(let j of [-1,1]){
-        const w=x===-178?10:14;
-        tower(b,m,rnd,x,center+j*12,w+rnd()*1.7,14+rnd()*4.4,12+rnd()*39,(i*4+j+10)%11,true,blocks);
+        tower(b,m,rnd,x,center+j*12,14+rnd()*1.7,14+rnd()*4.4,12+rnd()*39,(i*4+j+10)%11,true,blocks);
       }
     }
   }

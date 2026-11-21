@@ -1,5 +1,6 @@
 import * as T from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
+import { BOUNDS } from './map.js';
 
 // Render a low-resolution mirror under shallow pools. The rough asphalt
 // stays visible through the water and breaks up reflections along each edge.
@@ -40,10 +41,12 @@ export function addWetRoad(scene) {
         #include <colorspace_fragment>
       }`
   };
-  const wet=new Reflector(new T.PlaneGeometry(153,340),{
+  const roadEast=7.1;
+  const wet=new Reflector(new T.PlaneGeometry(roadEast-BOUNDS.minX,BOUNDS.maxZ-BOUNDS.minZ),{
     textureWidth:480,textureHeight:300,clipBias:.003,multisample:0,shader
   });
-  wet.rotation.x=-Math.PI/2;wet.position.set(-62,.012,-63);
+  wet.rotation.x=-Math.PI/2;
+  wet.position.set((BOUNDS.minX+roadEast)/2,.012,(BOUNDS.minZ+BOUNDS.maxZ)/2);
   wet.material.transparent=true;wet.material.depthWrite=false;
   scene.add(wet);
   return wet;
