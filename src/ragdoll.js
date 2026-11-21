@@ -1,4 +1,5 @@
 import * as T from 'three';
+import {carContact} from './vehicleContact.js';
 
 // Articulated point masses are sampled in the current animation pose. Torso
 // braces preserve its volume; the elbow, knee and ankle chains remain free.
@@ -20,52 +21,82 @@ function torsoFrame(points) {
 }
 
 // An asset arriving late keeps falling with the existing fallback mesh.
-function fallback(model, velocity, floor) {
+function fallback(model, velocity, floor, obstacles) {
   const root=model.mesh, initial=root.quaternion.clone(), motion=velocity.clone();
   const axis=v().set(motion.z,0,-motion.x).normalize();
+  if(!axis.lengthSq())axis.set(1,0,0);
   const base=root.position.clone();
-  let tilt=0,age=0;
+  let tilt=0,age=0,rest=0;
+  const correction=v();
   return {
     center:base,
     get age(){return age;},
-    update(dt){
-      age+=dt;motion.y-=13*dt;base.addScaledVector(motion,dt);
+    get settled(){return rest>.55 && age>1.45;},
+    impulse(velocity){motion.add(velocity).clampLength(0,18);rest=0;},
+    update(dt,cars=[]){
+      age+=dt;motion.y-=11.3*dt;base.addScaledVector(motion,dt);
       tilt=Math.min(1.48,tilt+dt*4);
       const surface=floor(base.x,base.z)+.12;
-      if(base.y<surface){base.y=surface;motion.y=0;motion.x*=.8;motion.z*=.8;}
+      if(base.y<=surface){base.y=surface;motion.y=0;motion.multiplyScalar(Math.exp(-7*dt));}
+      let onCar=false;
+      for(const car of cars)if(carContact(car,base,.13,correction)){
+        base.add(correction);motion.x+=(car.vx-motion.x)*.22;motion.z+=(car.vz-motion.z)*.22;onCar=true;
+      }
+      for(const wall of obstacles){
+        const dx=base.x-wall.x,dz=base.z-wall.z;
+        const ox=wall.w/2+.16-Math.abs(dx),oz=wall.d/2+.16-Math.abs(dz);
+        if(ox<=0||oz<=0)continue;
+        if(ox<oz){base.x+=Math.sign(dx||1)*ox;motion.x=0;}
+        else{base.z+=Math.sign(dz||1)*oz;motion.z=0;}
+      }
+      rest=!onCar&&base.y<=surface+.01&&motion.lengthSq()<.06?rest+dt:0;
       root.position.copy(base);root.quaternion.setFromAxisAngle(axis,tilt).multiply(initial);
     },
-    release(){root.quaternion.copy(initial);root.position.y=floor(base.x,base.z);return null;},
+    release(){
+      const from=root.quaternion.clone();let rising=0;
+      return {
+        interrupt(){},
+        restore(){root.quaternion.copy(initial);},
+        update(dt){
+          rising+=dt;
+          const t=T.MathUtils.smoothstep(rising,0,1.18);
+          root.quaternion.slerpQuaternions(from,initial,t);
+          root.position.y=floor(base.x,base.z)+.12*(1-t);
+          return t>=1;
+        }
+      };
+    },
     restore(){root.quaternion.copy(initial);}
   };
 }
 
-export function createRagdoll(model, velocity, floor, obstacles=[]) {
+export function createRagdoll(model, velocity, floor, obstacles=[], contact=null, walking=null) {
   const root=model.mesh, bones={}, skins=[];
   root.traverse(node=>{
     if(node.isBone)bones[node.name.replace(/^mixamorig[:_]?/,'')]=node;
     if(node.isSkinnedMesh)skins.push(node);
   });
   const names=[...new Set(chains.flat())];
-  if(names.some(n=>n!=='Crown' && !bones[n]))return fallback(model,velocity,floor);
+  if(names.some(n=>n!=='Crown' && !bones[n]))return fallback(model,velocity,floor,obstacles);
   // SkinnedMesh caches a bound from the standing pose. While the simulated
   // hips travel outside it that bound would incorrectly cull visible bodies.
   const culling=skins.map(mesh=>mesh.frustumCulled);
   skins.forEach(mesh=>{mesh.frustumCulled=false;});
   root.updateWorldMatrix(true,true);
   const points={};
+  const pelvis=bones.Hips.getWorldPosition(v());
+  const hit=contact||pelvis.clone().add(new T.Vector3(0,.24,0));
+  const spin=v().crossVectors(v().subVectors(hit,pelvis),velocity).multiplyScalar(1.65).clampLength(0,8.5);
   for(const name of names){
     const p=(bones[name]||bones.Head).getWorldPosition(v());
     if(name==='Crown')p.y+=.17;
     const suffix=name.replace(/^(Left|Right)/,'');
-    const vertical=p.y-root.position.y;
-    const factor=.53+Math.min(.89,vertical*.51);
-    const incoming=velocity.clone().multiplyScalar(factor);
-    // Differing velocities impart angular momentum on contact.
-    incoming.y+=Math.max(0,1.32-vertical)*.90;
-    if(name.endsWith('Hand'))incoming.y+=name.startsWith('Left')?1.22:-.35;
-    if(name.endsWith('Foot'))incoming.y+=name.startsWith('Left')?-.20:.55;
-    points[name]={pos:p,previous:p.clone().addScaledVector(incoming,-1/60),radius:radii[suffix],invMass:suffix==='Hips'?.42:suffix==='Head'?.65:1};
+    const proximity=Math.exp(-p.distanceToSquared(hit)/.24);
+    const incoming=velocity.clone().multiplyScalar(.63+.53*proximity);
+    incoming.add(v().crossVectors(spin,v().subVectors(p,pelvis)));
+    if(walking)incoming.add(walking);
+    points[name]={pos:p,previous:p.clone().addScaledVector(incoming,-1/60),last:p.clone(),display:p.clone(),
+      radius:radii[suffix],invMass:suffix==='Hips'?.42:suffix==='Head'?.65:1};
   }
   const links=[];
   function connect(a,b,min=1,max=1){
@@ -78,10 +109,19 @@ export function createRagdoll(model, velocity, floor, obstacles=[]) {
     if(core[a]==='Hips' && core[b]==='Head')continue;
     connect(core[a],core[b]);
   }
+  function flex(a,b,c,minAngle,maxAngle){
+    const p=points[a],q=points[c],u=p.pos.distanceTo(points[b].pos),w=q.pos.distanceTo(points[b].pos);
+    const reach=deg=>Math.sqrt(u*u+w*w-2*u*w*Math.cos(deg*Math.PI/180));
+    links.push({p,q,min:reach(minAngle),max:reach(maxAngle)});
+  }
   for(const s of sides){
-    connect(s+'UpLeg',s+'Foot',.42,1.04);
-    connect(s+'Arm',s+'Hand',.38,1.04);
+    flex(s+'UpLeg',s+'Leg',s+'Foot',34,176);
+    flex(s+'Arm',s+'ForeArm',s+'Hand',30,172);
     connect(s+'Arm','Crown',.77,1.2);
+    for(const [a,b] of [[s+'Hand','Head'],[s+'ForeArm','Hips'],[s+'Foot','Hips']]){
+      const p=points[a],q=points[b];
+      links.push({p,q,min:p.radius+q.radius,max:Infinity});
+    }
   }
   const startFrame=torsoFrame(points).invert();
   const initialHipsRotation=bones.Hips.getWorldQuaternion(quaternion());
@@ -98,42 +138,77 @@ export function createRagdoll(model, velocity, floor, obstacles=[]) {
     bone.parent.getWorldQuaternion(parentQ);
     bone.quaternion.copy(parentQ.invert()).multiply(q).normalize();
   }
-  const supports=['Head','Hips','LeftArm','RightArm','LeftFoot','RightFoot','LeftHand','RightHand'];
-  function applyPose(){
-    bones.Hips.position.copy(bones.Hips.parent.worldToLocal(delta.copy(points.Hips.pos)));
-    worldRotation(bones.Hips,torsoFrame(points).multiply(startFrame).multiply(initialHipsRotation));
-    for(const r of rotations){
-      direction.subVectors(r.b.pos,r.a.pos).normalize();
-      newQ.setFromUnitVectors(r.dir,direction).multiply(r.start);
-      worldRotation(r.bone,newQ);
-    }
+  const supports=['Head','Hips','LeftArm','RightArm','LeftFoot','RightFoot','LeftToeBase','RightToeBase','LeftHand','RightHand'];
+  function keepSkinAboveFloor(radiusScale=1){
     let lift=0;
     for(const name of supports){
       bones[name].getWorldPosition(delta);
-      lift=Math.max(lift,floor(delta.x,delta.z)+points[name].radius-delta.y);
+      lift=Math.max(lift,floor(delta.x,delta.z)+points[name].radius*radiusScale-delta.y);
     }
-    if(lift>.003){
-      delta.copy(points.Hips.pos);delta.y+=Math.min(.22,lift);
+    if(lift>.002){
+      bones.Hips.getWorldPosition(delta);delta.y+=Math.min(.30,lift);
       bones.Hips.position.copy(bones.Hips.parent.worldToLocal(delta));
     }
+  }
+  const display=Object.fromEntries(Object.entries(points).map(([name,p])=>[name,{pos:p.display}]));
+  function applyPose(alpha=1){
+    for(const p of particles)p.display.lerpVectors(p.last,p.pos,alpha);
+    bones.Hips.position.copy(bones.Hips.parent.worldToLocal(delta.copy(points.Hips.display)));
+    worldRotation(bones.Hips,torsoFrame(display).multiply(startFrame).multiply(initialHipsRotation));
+    for(const r of rotations){
+      direction.subVectors(r.b.display,r.a.display).normalize();
+      newQ.setFromUnitVectors(r.dir,direction).multiply(r.start);
+      worldRotation(r.bone,newQ);
+    }
+    keepSkinAboveFloor();
   }
   function restore(){
     bones.Hips.position.copy(originalHips);
     driven.forEach((b,i)=>b.quaternion.copy(original[i]));
   }
   const particles=Object.values(points);
-  let age=0;
+  let age=0,rest=0,previousDt=1/60;
+  let nearbyWalls=[];
+  const wallAnchor=v().set(Infinity,0,Infinity);
+  const normal=v(),correction=v(),relative=v();
+  function project(p,offset,car,h){
+    // Shift both samples. A projection out of a deep corner is a correction
+    // of position, and should not be turned into a huge launch velocity.
+    p.pos.add(offset);p.previous.add(offset);normal.copy(offset).normalize();
+    relative.subVectors(p.pos,p.previous).multiplyScalar(1/h);
+    if(car){relative.x-=car.vx;relative.z-=car.vz;}
+    const inward=relative.dot(normal);
+    if(inward<0)relative.addScaledVector(normal,-inward*(1+(inward< -2?.10:0)));
+    if(car){relative.x+=car.vx;relative.z+=car.vz;p.onCar=true;}
+    p.previous.copy(p.pos).addScaledVector(relative,-h);
+  }
   return {
     center:points.Hips.pos,
     get age(){return age;},
-    update(dt){
+    get settled(){return age>1.45 && rest>.55;},
+    render:applyPose,
+    impulse(velocity,at=points.Hips.pos){
+      rest=0;
+      for(const p of particles){
+        relative.subVectors(p.pos,p.previous).multiplyScalar(1/previousDt);
+        relative.addScaledVector(velocity,.46+.62*Math.exp(-p.pos.distanceToSquared(at)/.28)).clampLength(0,20);
+        p.previous.copy(p.pos).addScaledVector(relative,-previousDt);
+      }
+    },
+    update(dt,cars=[]){
       if(dt<=0)return;
       age+=dt;
-      for(const p of particles){
-        delta.subVectors(p.pos,p.previous).multiplyScalar(.99);
-        p.previous.copy(p.pos);p.pos.add(delta);p.pos.y-=15*dt*dt;
+      if(wallAnchor.distanceToSquared(points.Hips.pos)>64){
+        wallAnchor.copy(points.Hips.pos);
+        nearbyWalls=obstacles.filter(w=>Math.abs(w.x-wallAnchor.x)<w.w/2+14&&Math.abs(w.z-wallAnchor.z)<w.d/2+14);
       }
-      for(let iteration=0;iteration<6;iteration++){
+      for(const p of particles){
+        p.last.copy(p.pos);p.ground=false;p.onCar=false;
+        delta.subVectors(p.pos,p.previous).multiplyScalar(dt/previousDt*Math.exp(-.27*dt));
+        p.previous.copy(p.pos);p.pos.add(delta);p.pos.y-=11.3*dt*dt;
+      }
+      previousDt=dt;
+      for(let iteration=0;iteration<7;iteration++){
         for(const {p,q,min,max} of links){
           delta.subVectors(q.pos,p.pos);
           const len=delta.length();
@@ -144,24 +219,33 @@ export function createRagdoll(model, velocity, floor, obstacles=[]) {
         }
         for(const p of particles){
           const y=floor(p.pos.x,p.pos.z)+p.radius;
-          if(p.pos.y>=y)continue;
-          p.pos.y=y;
-          p.previous.x+=(p.pos.x-p.previous.x)*.17;
-          p.previous.z+=(p.pos.z-p.previous.z)*.17;
-          p.previous.y=Math.min(y,p.previous.y);
-        }
-        if(iteration===5)for(const p of particles)for(const wall of obstacles){
-          const dx=p.pos.x-wall.x,dz=p.pos.z-wall.z;
-          const overlapX=wall.w/2+p.radius-Math.abs(dx),overlapZ=wall.d/2+p.radius-Math.abs(dz);
-          if(overlapX<=0 || overlapZ<=0)continue;
-          if(overlapX<overlapZ){p.pos.x+=(dx>=0?1:-1)*overlapX;p.previous.x=p.pos.x;}
-          else {p.pos.z+=(dz>=0?1:-1)*overlapZ;p.previous.z=p.pos.z;}
+          if(p.pos.y<y){project(p,correction.set(0,y-p.pos.y,0),null,dt);p.ground=true;}
+          for(const car of cars)if(carContact(car,p.pos,p.radius,correction))project(p,correction,car,dt);
+          for(const wall of nearbyWalls){
+            const dx=p.pos.x-wall.x,dz=p.pos.z-wall.z;
+            const overlapX=wall.w/2+p.radius-Math.abs(dx),overlapZ=wall.d/2+p.radius-Math.abs(dz);
+            if(overlapX<=0 || overlapZ<=0)continue;
+            if(overlapX<overlapZ)correction.set((dx>=0?1:-1)*overlapX,0,0);
+            else correction.set(0,0,(dz>=0?1:-1)*overlapZ);
+            project(p,correction,null,dt);
+          }
         }
       }
-      applyPose();
+      let grounded=0,energy=0,onCar=false;
+      for(const p of particles){
+        if(p.ground){
+          grounded++;const friction=1-Math.exp(-9*dt);
+          p.previous.x+=(p.pos.x-p.previous.x)*friction;
+          p.previous.z+=(p.pos.z-p.previous.z)*friction;
+        }
+        if(p.onCar)onCar=true;
+        energy+=p.pos.distanceToSquared(p.last)/(dt*dt);
+      }
+      rest=grounded>=3&&!onCar&&energy/particles.length<.085?rest+dt:0;
     },
     restore(){restore();skins.forEach((s,i)=>{s.frustumCulled=culling[i];});},
     release(){
+      applyPose();
       const hip=points.Hips.pos;
       root.position.set(hip.x,floor(hip.x,hip.z),hip.z);
       // Rebase the physics pose around its resting position before blending
@@ -171,15 +255,21 @@ export function createRagdoll(model, velocity, floor, obstacles=[]) {
       let blendTime=0;
       function restoreCulling(){skins.forEach((s,i)=>{s.frustumCulled=culling[i];});}
       return {
+        interrupt:restoreCulling,
         restore(){restore();restoreCulling();},
         update(dt){
           blendTime+=dt;
-          const t=T.MathUtils.smoothstep(blendTime,0,.75);
+          const torso=T.MathUtils.smoothstep(blendTime,0,.90);
+          const rise=T.MathUtils.smoothstep(blendTime,.22,1.18);
           restore();model.update(dt,false);
-          bones.Hips.position.lerp(fromHips,1-t);
-          driven.forEach((b,i)=>b.quaternion.slerp(from[i],1-t));
-          if(t>=1)restoreCulling();
-          return t>=1;
+          bones.Hips.position.lerp(fromHips,1-rise);
+          driven.forEach((bone,i)=>{
+            const weight=/Leg|Foot|Toe/.test(bone.name)?rise:torso;
+            bone.quaternion.slerp(from[i],1-weight);
+          });
+          if(rise<1)keepSkinAboveFloor(1-rise);
+          else restoreCulling();
+          return rise>=1;
         }
       };
     }

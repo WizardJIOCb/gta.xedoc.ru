@@ -1,6 +1,7 @@
 import * as T from 'three';
 import { createCar, createPerson } from './vehicles.js';
 import { createRagdoll } from './ragdoll.js';
+import { setCarVolume } from './vehicleContact.js';
 import { REGION_ROADS, isTraversable } from './map.js';
 
 // Offset loops keep traffic in its own lane through each rounded corner.
@@ -82,8 +83,10 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
     }
     rendered=false;
   }
-  function update(dt, player, driving) {
+  function update(dt, player, driving, playerVehicle) {
     beginStep();simTime+=dt;lastStep=dt;
+    if(playerVehicle&&!driving)setCarVolume(heroVolume,playerVehicle.x,terrainHeight(playerVehicle.x,playerVehicle.z),
+      playerVehicle.z,playerVehicle.yaw,0,0,true);
     for(const a of agents){a.prevPosition.copy(a.position);a.prevRotation.copy(a.rotation);}
     for (const car of cars) {
       const p = car.model.mesh.position, h = car.model.mesh.rotation.y;
@@ -101,6 +104,7 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
       const ahead=car.path.getPoint(((car.offset+0.4)%car.length)/car.length);
       const heading=Math.atan2(p.x-ahead.x,p.z-ahead.z);
       car.model.mesh.rotation.y=heading;
+      setCarVolume(car.volume,p.x,p.y,p.z,heading,-Math.sin(heading)*speed,-Math.cos(heading)*speed);
       if(speed>0){
         const future=car.path.getPoint(((car.offset+1.4)%car.length)/car.length);
         const next=Math.atan2(ahead.x-future.x,ahead.z-future.z);
@@ -112,14 +116,22 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
     for (const ped of pedestrians) {
       const obj=ped.model.mesh;
       ped.cooldown=Math.max(0,ped.cooldown-dt);
+      if(dt>0 && !ped.rag&&!ped.cooldown){
+        for(const car of cars)if(strike(ped,car.volume))break;
+      }
       if(ped.rag){
-        ped.rag.update(dt);
         const center=ped.rag.center;
-        const clear=(!driving || Math.hypot(center.x-player.x,center.z-player.z)>3) &&
-          !allCars.some(({model})=>Math.hypot(center.x-model.mesh.position.x,center.z-model.mesh.position.z)<2.7);
-        if(ped.rag.age>=3.5 && clear){
+        const nearby=volumes.filter(car=>Math.abs(car.x-center.x)<4 && Math.abs(car.z-center.z)<4);
+        if((driving||playerVehicle)&&Math.abs(heroVolume.x-center.x)<4&&Math.abs(heroVolume.z-center.z)<4)nearby.push(heroVolume);
+        ped.rag.update(dt,nearby);
+        const clear=!nearby.some(car=>{
+          const dx=center.x-car.x,dz=center.z-car.z;
+          return Math.abs(dx*car.cos-dz*car.sin)<1.34&&Math.abs(dx*car.sin+dz*car.cos)<2.57;
+        });
+        if(ped.rag.settled && clear){
           ped.recovery=ped.rag.release();ped.rag=null;ped.origin=obj.position.z;ped.anchorX=obj.position.x;
-          ped.speed=ped.gaitSpeed=0;ped.cooldown=1.4;
+          ped.prevPosition.copy(obj.position);
+          ped.speed=ped.gaitSpeed=0;ped.cooldown=.2;
         }
         continue;
       }
@@ -164,7 +176,8 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
     }
     for(const car of cars)car.model.renderWheels(alpha);
     for(const p of pedestrians){
-      if(!p.rag && !p.recovery)p.model.update(dt,p.gaitSpeed>.075,p.gaitSpeed);
+      if(p.rag)p.rag.render?.(alpha);
+      else if(!p.recovery)p.model.update(dt,p.gaitSpeed>.075,p.gaitSpeed);
     }
     rendered=true;
   }
@@ -177,37 +190,56 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
     return {model};
   });
   const allCars=[...cars,...parked];
-  function knock(ped,velocity){
-    if(ped.rag || ped.recovery || ped.cooldown>0)return 0;
-    const p=ped.model.mesh.position;
-    const nearby=blocks.filter(b=>Math.abs(p.x-b.x)<b.w/2+20 && Math.abs(p.z-b.z)<b.d/2+20);
-    ped.rag=createRagdoll(ped.model,velocity,terrainHeight,nearby);
+  const volumes=allCars.map(car=>{
+    const {position:p,rotation}=car.model.mesh;
+    car.volume=setCarVolume({},p.x,p.y,p.z,rotation.y,0,0);return car.volume;
+  });
+  const heroVolume=setCarVolume({},Infinity,0,Infinity,0,0,0,true);
+  function knock(ped,velocity,contact){
+    if(ped.cooldown>0)return 0;
+    if(ped.rag){ped.rag.impulse(velocity,contact);ped.cooldown=.32;return 1;}
+    if(ped.recovery){ped.recovery.interrupt();ped.recovery=null;}
+    const heading=ped.model.mesh.rotation.y;
+    const walking=new T.Vector3(-Math.sin(heading)*ped.speed,0,-Math.cos(heading)*ped.speed);
+    ped.rag=createRagdoll(ped.model,velocity,terrainHeight,blocks,contact,walking);ped.cooldown=.32;
     return 1;
   }
+  function strike(ped,car){
+    if(ped.rag||ped.cooldown>0)return 0;
+    const p=ped.model.mesh.position,dx=p.x-car.x,dz=p.z-car.z;
+    if(Math.abs(dx)>2.7||Math.abs(dz)>2.7||Math.abs(p.y-car.y)>.85)return 0;
+    const speed=Math.hypot(car.vx,car.vz);
+    if(speed<1)return 0;
+    const side=dx*car.cos-dz*car.sin,along=dx*car.sin+dz*car.cos;
+    const localX=T.MathUtils.clamp(side,-.90,.90),localZ=T.MathUtils.clamp(along,-2.13,2.13);
+    const gap=Math.hypot(side-localX,along-localZ);
+    if(gap>.27)return 0;
+    const worldX=car.x+localX*car.cos+localZ*car.sin,worldZ=car.z-localX*car.sin+localZ*car.cos;
+    const nx=gap>.001?(p.x-worldX)/gap:car.vx/speed,nz=gap>.001?(p.z-worldZ)/gap:car.vz/speed;
+    const approach=nx*car.vx+nz*car.vz;
+    if(approach<-.3)return 0;
+    const normalSpeed=Math.min(9,.55*Math.max(approach,0));
+    const carry=Math.min(.30,5/speed);
+    const lift=Math.min(3.4,.26+Math.max(approach,0)*.13);
+    const impulse=new T.Vector3(car.vx*carry+nx*normalSpeed,lift,car.vz*carry+nz*normalSpeed);
+    // At walking speed the pedestrian can turn a shoulder and stumble aside.
+    const sidestep=(Math.sign(side)||ped.dir)*1.35*(1-T.MathUtils.smoothstep(speed,2,7));
+    impulse.x+=car.cos*sidestep;impulse.z-=car.sin*sidestep;
+    const point=new T.Vector3(p.x-.18*nx,car.y+.53,p.z-.18*nz);
+    return knock(ped,impulse,point);
+  }
   function hitVehicle(vehicle){
-    const speed=Math.hypot(vehicle.vx,vehicle.vz);
-    if(speed<.7)return 0;
-    const sin=Math.sin(vehicle.yaw), cos=Math.cos(vehicle.yaw);
-    let count=0;
-    for(const ped of pedestrians){
-      const p=ped.model.mesh.position,dx=p.x-vehicle.x,dz=p.z-vehicle.z;
-      const side=dx*cos-dz*sin;
-      if(Math.abs(side)>1.19 || Math.abs(dx*sin+dz*cos)>2.40)continue;
-      const lateral=Math.sign(side||1)*1.3;
-      const shove=Math.min(10,1.3+speed*.40);
-      count+=knock(ped,new T.Vector3(vehicle.vx/speed*shove+cos*lateral,
-        Math.min(4.5,1.05+speed*.15),vehicle.vz/speed*shove-sin*lateral));
-    }
-    return count;
+    setCarVolume(heroVolume,vehicle.x,terrainHeight(vehicle.x,vehicle.z),vehicle.z,vehicle.yaw,vehicle.vx,vehicle.vz,true);
+    let count=0;for(const ped of pedestrians)count+=strike(ped,heroVolume);return count;
   }
   function pulse(x,z,dx,dz,range,canReach,{cone=.79,strength=1,lift=3.4,maxHits=Infinity}={}){
     const length=Math.hypot(dx,dz);
     if(!length || range<=0)return 0;
     const targets=[];
     for(const ped of pedestrians){
-      const p=ped.model.mesh.position,ax=p.x-x,az=p.z-z,d=Math.hypot(ax,az);
+      const p=ped.rag?.center||ped.model.mesh.position,ax=p.x-x,az=p.z-z,d=Math.hypot(ax,az);
       const forward=(ax*dx+az*dz)/length;
-      if(ped.rag || ped.recovery || ped.cooldown>0 || d>range || forward<d*cone ||
+      if(ped.cooldown>0 || d>range || forward<d*cone ||
         (canReach && !canReach(p.x,p.z)))continue;
       targets.push({ped,ax,az,d});
     }
@@ -215,12 +247,16 @@ export function createDistrict(scene,blocks=[],terrainHeight=groundHeight) {
     let count=0;
     for(const {ped,ax,az,d} of targets){
       const push=(4.3+(1-d/range)*3.9)*strength;
-      count+=knock(ped,new T.Vector3(d>.001?ax/d*push:dx/length*push,lift,d>.001?az/d*push:dz/length*push));
+      const pushX=d>.001?ax/d:dx/length,pushZ=d>.001?az/d:dz/length;
+      const p=ped.rag?.center||ped.model.mesh.position;
+      const point=new T.Vector3(p.x-.12*pushX,p.y+(ped.rag ? .05 : 1.20),p.z-.12*pushZ);
+      count+=knock(ped,new T.Vector3(pushX*push,lift,pushZ*push),point);
       if(count>=maxHits)break;
     }
     return count;
   }
   function reset(){
+    heroVolume.x=heroVolume.z=Infinity;
     beginStep();simTime=lastStep=animationTime=0;
     for(const car of cars){car.offset=car.initialOffset;car.steer=0;car.speed=car.pace;}
     for(const ped of pedestrians){
